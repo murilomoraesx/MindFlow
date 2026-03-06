@@ -1,2 +1,643 @@
 @import "tailwindcss";
 @variant dark (&:where(.dark, .dark *));
+
+:root {
+  --mf-bg-start: #f5f8fd;
+  --mf-bg-mid: #e8eef8;
+  --mf-bg-end: #d9e5f6;
+  --mf-surface: #ffffff;
+  --mf-border: #dbe4f0;
+}
+
+.mf-app-shell {
+  --mf-canvas-layer-1: radial-gradient(circle at 14% 18%, rgb(59 130 246 / 0.14) 0%, transparent 34%);
+  --mf-canvas-layer-2: radial-gradient(circle at 84% 16%, rgb(14 165 233 / 0.12) 0%, transparent 30%);
+  --mf-canvas-layer-3: radial-gradient(circle at 76% 84%, rgb(99 102 241 / 0.08) 0%, transparent 28%);
+  --mf-canvas-base: linear-gradient(135deg, #f6f9ff 0%, #eaf1fb 52%, #dbe6f6 100%);
+  --mf-canvas-size: auto;
+  --mf-canvas-animation: none;
+  --mf-ui-panel: rgb(255 255 255 / 0.84);
+  --mf-ui-panel-strong: rgb(255 255 255 / 0.92);
+  --mf-ui-card: rgb(255 255 255 / 0.9);
+  --mf-ui-card-hover: rgb(255 255 255 / 0.98);
+  --mf-ui-input: rgb(255 255 255 / 0.7);
+  --mf-ui-input-strong: rgb(255 255 255 / 0.94);
+  --mf-ui-border: rgb(148 163 184 / 0.22);
+  --mf-ui-border-strong: rgb(100 116 139 / 0.26);
+  --mf-ui-text: #0f172a;
+  --mf-ui-muted: #516074;
+  --mf-ui-subtle: #7a899b;
+  --mf-ui-button-hover: rgb(148 163 184 / 0.14);
+  --mf-ui-button-active: rgb(148 163 184 / 0.22);
+  --mf-ui-accent: #2563eb;
+  --mf-ui-accent-soft: rgb(37 99 235 / 0.12);
+  --mf-ui-shadow: 0 18px 42px rgb(15 23 42 / 0.08);
+  --mf-ui-shadow-strong: 0 24px 50px rgb(15 23 42 / 0.12);
+}
+
+/* ═══ LIGHT THEMES ═══ */
+
+[data-canvas-theme="elegante"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 16% 20%, rgb(217 70 239 / 0.1) 0%, transparent 34%);
+  --mf-canvas-layer-2: radial-gradient(circle at 82% 14%, rgb(244 114 182 / 0.08) 0%, transparent 30%);
+  --mf-canvas-layer-3: radial-gradient(circle at 72% 80%, rgb(168 85 247 / 0.06) 0%, transparent 28%);
+  --mf-canvas-base: linear-gradient(140deg, #fdf8fc 0%, #f5eef8 52%, #ede4f3 100%);
+  --mf-ui-panel: rgb(255 252 254 / 0.86);
+  --mf-ui-panel-strong: rgb(255 253 255 / 0.94);
+  --mf-ui-card: rgb(255 253 255 / 0.92);
+  --mf-ui-card-hover: rgb(255 255 255 / 0.98);
+  --mf-ui-input: rgb(255 250 254 / 0.78);
+  --mf-ui-input-strong: rgb(255 253 255 / 0.96);
+  --mf-ui-border: rgb(168 85 247 / 0.18);
+  --mf-ui-border-strong: rgb(147 51 234 / 0.26);
+  --mf-ui-text: #2e1338;
+  --mf-ui-muted: #6b4c7a;
+  --mf-ui-subtle: #9578a6;
+  --mf-ui-button-hover: rgb(168 85 247 / 0.12);
+  --mf-ui-button-active: rgb(168 85 247 / 0.2);
+  --mf-ui-accent: #9333ea;
+  --mf-ui-accent-soft: rgb(147 51 234 / 0.1);
+  --mf-ui-shadow: 0 18px 44px rgb(88 28 135 / 0.08);
+  --mf-ui-shadow-strong: 0 24px 56px rgb(88 28 135 / 0.12);
+}
+
+[data-canvas-theme="moderno"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 14% 18%, rgb(59 130 246 / 0.14) 0%, transparent 34%);
+  --mf-canvas-layer-2: radial-gradient(circle at 84% 16%, rgb(14 165 233 / 0.12) 0%, transparent 30%);
+  --mf-canvas-layer-3: radial-gradient(circle at 76% 84%, rgb(99 102 241 / 0.08) 0%, transparent 28%);
+  --mf-canvas-base: linear-gradient(135deg, #f6f9ff 0%, #eaf1fb 52%, #dbe6f6 100%);
+  --mf-ui-panel: rgb(255 255 255 / 0.84);
+  --mf-ui-panel-strong: rgb(255 255 255 / 0.94);
+  --mf-ui-card: rgb(255 255 255 / 0.92);
+  --mf-ui-card-hover: rgb(255 255 255 / 0.98);
+  --mf-ui-input: rgb(255 255 255 / 0.72);
+  --mf-ui-input-strong: rgb(255 255 255 / 0.96);
+  --mf-ui-border: rgb(125 146 176 / 0.24);
+  --mf-ui-border-strong: rgb(82 107 144 / 0.28);
+  --mf-ui-text: #0f172a;
+  --mf-ui-muted: #516074;
+  --mf-ui-subtle: #7a899b;
+  --mf-ui-button-hover: rgb(125 146 176 / 0.14);
+  --mf-ui-button-active: rgb(125 146 176 / 0.22);
+  --mf-ui-accent: #2563eb;
+  --mf-ui-accent-soft: rgb(37 99 235 / 0.12);
+  --mf-ui-shadow: 0 18px 44px rgb(37 99 235 / 0.08);
+  --mf-ui-shadow-strong: 0 24px 56px rgb(37 99 235 / 0.12);
+}
+
+[data-canvas-theme="tech"] {
+  --mf-canvas-layer-1: linear-gradient(rgb(99 102 241 / 0.06) 1px, transparent 1px);
+  --mf-canvas-layer-2: linear-gradient(90deg, rgb(99 102 241 / 0.06) 1px, transparent 1px);
+  --mf-canvas-layer-3: radial-gradient(circle at 50% 50%, rgb(79 70 229 / 0.08) 0%, transparent 50%);
+  --mf-canvas-base: linear-gradient(140deg, #f0f0ff 0%, #e6e6fa 52%, #dddcf8 100%);
+  --mf-canvas-size: 24px 24px, 24px 24px, auto, auto;
+  --mf-ui-panel: rgb(245 245 255 / 0.86);
+  --mf-ui-panel-strong: rgb(248 248 255 / 0.94);
+  --mf-ui-card: rgb(250 250 255 / 0.92);
+  --mf-ui-card-hover: rgb(255 255 255 / 0.98);
+  --mf-ui-input: rgb(242 242 255 / 0.8);
+  --mf-ui-input-strong: rgb(250 250 255 / 0.96);
+  --mf-ui-border: rgb(99 102 241 / 0.2);
+  --mf-ui-border-strong: rgb(79 70 229 / 0.28);
+  --mf-ui-text: #1e1b4b;
+  --mf-ui-muted: #4c4882;
+  --mf-ui-subtle: #7673a8;
+  --mf-ui-button-hover: rgb(99 102 241 / 0.12);
+  --mf-ui-button-active: rgb(99 102 241 / 0.2);
+  --mf-ui-accent: #6366f1;
+  --mf-ui-accent-soft: rgb(99 102 241 / 0.1);
+  --mf-ui-shadow: 0 18px 42px rgb(67 56 202 / 0.08);
+  --mf-ui-shadow-strong: 0 24px 54px rgb(67 56 202 / 0.12);
+}
+
+[data-canvas-theme="retro"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 18% 20%, rgb(245 158 11 / 0.12) 0%, transparent 30%);
+  --mf-canvas-layer-2: radial-gradient(circle at 80% 16%, rgb(234 88 12 / 0.08) 0%, transparent 28%);
+  --mf-canvas-layer-3: radial-gradient(circle at 50% 82%, rgb(180 83 9 / 0.06) 0%, transparent 26%);
+  --mf-canvas-base: linear-gradient(140deg, #fffcf5 0%, #f8f0e0 54%, #f0e6d2 100%);
+  --mf-ui-panel: rgb(255 252 245 / 0.88);
+  --mf-ui-panel-strong: rgb(255 253 248 / 0.95);
+  --mf-ui-card: rgb(255 254 250 / 0.94);
+  --mf-ui-card-hover: rgb(255 255 255 / 1);
+  --mf-ui-input: rgb(255 250 240 / 0.84);
+  --mf-ui-input-strong: rgb(255 253 248 / 0.98);
+  --mf-ui-border: rgb(180 120 60 / 0.22);
+  --mf-ui-border-strong: rgb(146 100 50 / 0.3);
+  --mf-ui-text: #3d2b1a;
+  --mf-ui-muted: #7a6348;
+  --mf-ui-subtle: #a38c6e;
+  --mf-ui-button-hover: rgb(180 120 60 / 0.14);
+  --mf-ui-button-active: rgb(180 120 60 / 0.22);
+  --mf-ui-accent: #d97706;
+  --mf-ui-accent-soft: rgb(217 119 6 / 0.1);
+  --mf-ui-shadow: 0 18px 42px rgb(120 80 30 / 0.08);
+  --mf-ui-shadow-strong: 0 24px 50px rgb(120 80 30 / 0.12);
+}
+
+/* ═══ DARK THEMES ═══ */
+
+[data-canvas-theme="neon"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 14% 20%, rgb(6 182 212 / 0.2) 0%, transparent 36%);
+  --mf-canvas-layer-2: radial-gradient(circle at 86% 16%, rgb(168 85 247 / 0.18) 0%, transparent 32%);
+  --mf-canvas-layer-3: radial-gradient(circle at 50% 84%, rgb(236 72 153 / 0.12) 0%, transparent 30%);
+  --mf-canvas-base: linear-gradient(140deg, #070b14 0%, #0c1220 54%, #10162a 100%);
+  --mf-ui-panel: rgb(8 14 26 / 0.82);
+  --mf-ui-panel-strong: rgb(10 18 32 / 0.92);
+  --mf-ui-card: rgb(14 22 38 / 0.9);
+  --mf-ui-card-hover: rgb(18 28 48 / 0.96);
+  --mf-ui-input: rgb(10 16 30 / 0.84);
+  --mf-ui-input-strong: rgb(14 22 38 / 0.96);
+  --mf-ui-border: rgb(6 182 212 / 0.22);
+  --mf-ui-border-strong: rgb(34 211 238 / 0.3);
+  --mf-ui-text: #e0f7fa;
+  --mf-ui-muted: #8ecdd6;
+  --mf-ui-subtle: #5ea8b4;
+  --mf-ui-button-hover: rgb(6 182 212 / 0.16);
+  --mf-ui-button-active: rgb(6 182 212 / 0.26);
+  --mf-ui-accent: #22d3ee;
+  --mf-ui-accent-soft: rgb(34 211 238 / 0.12);
+  --mf-ui-shadow: 0 18px 48px rgb(0 0 0 / 0.36);
+  --mf-ui-shadow-strong: 0 24px 60px rgb(0 0 0 / 0.5);
+}
+
+[data-canvas-theme="cosmos"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 20% 22%, rgb(129 140 248 / 0.16) 0%, transparent 34%);
+  --mf-canvas-layer-2: radial-gradient(circle at 78% 18%, rgb(192 132 252 / 0.14) 0%, transparent 30%);
+  --mf-canvas-layer-3: radial-gradient(circle at 50% 78%, rgb(99 102 241 / 0.1) 0%, transparent 32%);
+  --mf-canvas-base: linear-gradient(140deg, #080818 0%, #0e0e28 54%, #14123a 100%);
+  --mf-ui-panel: rgb(10 10 28 / 0.84);
+  --mf-ui-panel-strong: rgb(14 14 36 / 0.93);
+  --mf-ui-card: rgb(18 18 42 / 0.9);
+  --mf-ui-card-hover: rgb(24 22 52 / 0.96);
+  --mf-ui-input: rgb(12 12 32 / 0.86);
+  --mf-ui-input-strong: rgb(18 18 42 / 0.96);
+  --mf-ui-border: rgb(129 140 248 / 0.2);
+  --mf-ui-border-strong: rgb(165 180 252 / 0.28);
+  --mf-ui-text: #e8e8ff;
+  --mf-ui-muted: #b4b4e0;
+  --mf-ui-subtle: #8484bc;
+  --mf-ui-button-hover: rgb(129 140 248 / 0.14);
+  --mf-ui-button-active: rgb(129 140 248 / 0.24);
+  --mf-ui-accent: #a78bfa;
+  --mf-ui-accent-soft: rgb(167 139 250 / 0.12);
+  --mf-ui-shadow: 0 18px 48px rgb(0 0 0 / 0.4);
+  --mf-ui-shadow-strong: 0 24px 60px rgb(0 0 0 / 0.54);
+}
+
+[data-canvas-theme="terminal"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 16% 20%, rgb(34 197 94 / 0.12) 0%, transparent 32%);
+  --mf-canvas-layer-2: radial-gradient(circle at 82% 16%, rgb(22 163 74 / 0.1) 0%, transparent 28%);
+  --mf-canvas-layer-3: linear-gradient(rgb(34 197 94 / 0.03) 1px, transparent 1px);
+  --mf-canvas-base: linear-gradient(140deg, #060d06 0%, #0a140a 52%, #0e1a0e 100%);
+  --mf-canvas-size: auto, auto, 100% 20px, auto;
+  --mf-ui-panel: rgb(6 14 6 / 0.86);
+  --mf-ui-panel-strong: rgb(10 20 10 / 0.94);
+  --mf-ui-card: rgb(14 26 14 / 0.9);
+  --mf-ui-card-hover: rgb(18 34 18 / 0.96);
+  --mf-ui-input: rgb(8 18 8 / 0.86);
+  --mf-ui-input-strong: rgb(14 26 14 / 0.96);
+  --mf-ui-border: rgb(34 197 94 / 0.2);
+  --mf-ui-border-strong: rgb(74 222 128 / 0.28);
+  --mf-ui-text: #d4fcd4;
+  --mf-ui-muted: #82c482;
+  --mf-ui-subtle: #5a9a5a;
+  --mf-ui-button-hover: rgb(34 197 94 / 0.14);
+  --mf-ui-button-active: rgb(34 197 94 / 0.24);
+  --mf-ui-accent: #4ade80;
+  --mf-ui-accent-soft: rgb(74 222 128 / 0.12);
+  --mf-ui-shadow: 0 18px 48px rgb(0 0 0 / 0.38);
+  --mf-ui-shadow-strong: 0 24px 60px rgb(0 0 0 / 0.52);
+}
+
+[data-canvas-theme="ember"] {
+  --mf-canvas-layer-1: radial-gradient(circle at 16% 22%, rgb(249 115 22 / 0.16) 0%, transparent 34%);
+  --mf-canvas-layer-2: radial-gradient(circle at 84% 16%, rgb(239 68 68 / 0.12) 0%, transparent 30%);
+  --mf-canvas-layer-3: radial-gradient(circle at 50% 80%, rgb(234 88 12 / 0.08) 0%, transparent 28%);
+  --mf-canvas-base: linear-gradient(140deg, #140a06 0%, #1c0e08 54%, #24120a 100%);
+  --mf-ui-panel: rgb(22 10 6 / 0.84);
+  --mf-ui-panel-strong: rgb(28 14 8 / 0.93);
+  --mf-ui-card: rgb(34 18 10 / 0.9);
+  --mf-ui-card-hover: rgb(42 22 14 / 0.96);
+  --mf-ui-input: rgb(26 12 8 / 0.86);
+  --mf-ui-input-strong: rgb(34 18 10 / 0.96);
+  --mf-ui-border: rgb(249 115 22 / 0.22);
+  --mf-ui-border-strong: rgb(251 146 60 / 0.3);
+  --mf-ui-text: #fff0e6;
+  --mf-ui-muted: #dab498;
+  --mf-ui-subtle: #b48a6a;
+  --mf-ui-button-hover: rgb(249 115 22 / 0.16);
+  --mf-ui-button-active: rgb(249 115 22 / 0.24);
+  --mf-ui-accent: #fb923c;
+  --mf-ui-accent-soft: rgb(251 146 60 / 0.12);
+  --mf-ui-shadow: 0 18px 48px rgb(0 0 0 / 0.38);
+  --mf-ui-shadow-strong: 0 24px 60px rgb(0 0 0 / 0.52);
+}
+
+.react-flow {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    var(--mf-canvas-layer-1),
+    var(--mf-canvas-layer-2),
+    var(--mf-canvas-layer-3),
+    var(--mf-canvas-base) !important;
+  background-size: var(--mf-canvas-size);
+  animation: var(--mf-canvas-animation);
+}
+
+[data-canvas-theme="elegante"] .react-flow,
+[data-canvas-theme="cosmos"] .react-flow {
+  animation: mf-canvas-shift 20s ease-in-out infinite;
+}
+
+[data-canvas-theme="neon"] .react-flow {
+  animation: mf-canvas-breathe 24s ease-in-out infinite;
+}
+
+@keyframes mf-canvas-shift {
+  0%, 100% { background-position: 0% 0%, 100% 0%, 50% 100%, 50% 50%; }
+  50% { background-position: 6% 4%, 94% 8%, 48% 94%, 50% 50%; }
+}
+
+@keyframes mf-canvas-breathe {
+  0%, 100% { filter: saturate(1) brightness(1); }
+  50% { filter: saturate(1.04) brightness(1.02); }
+}
+
+.mf-toolbar,
+.mf-sidebar-panel,
+.mf-structure-panel,
+.mf-style-panel,
+.mf-theme-menu {
+  background: var(--mf-ui-panel) !important;
+  border-color: var(--mf-ui-border) !important;
+  box-shadow: var(--mf-ui-shadow);
+  color: var(--mf-ui-text);
+}
+
+.mf-theme-menu {
+  background: var(--mf-ui-panel-strong) !important;
+  box-shadow: var(--mf-ui-shadow-strong);
+}
+
+.mf-sidebar-panel [draggable='true'],
+.mf-structure-panel .group,
+.mf-style-panel .rounded-md,
+.mf-style-panel .rounded,
+.mf-style-panel .rounded-lg,
+.mf-style-panel .rounded-xl {
+  border-color: var(--mf-ui-border);
+}
+
+.mf-sidebar-panel [draggable='true'] {
+  background: var(--mf-ui-card);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.04);
+}
+
+.mf-sidebar-panel [draggable='true']:hover {
+  background: var(--mf-ui-card-hover);
+  border-color: var(--mf-ui-border-strong);
+}
+
+.mf-toolbar input,
+.mf-structure-panel input,
+.mf-style-panel input,
+.mf-style-panel textarea,
+.mf-style-panel select {
+  background: var(--mf-ui-input) !important;
+  border-color: var(--mf-ui-border) !important;
+  color: var(--mf-ui-text) !important;
+}
+
+.mf-toolbar input::placeholder,
+.mf-structure-panel input::placeholder,
+.mf-style-panel input::placeholder,
+.mf-style-panel textarea::placeholder {
+  color: var(--mf-ui-subtle) !important;
+}
+
+.mf-theme-menu button,
+.mf-structure-panel button,
+.mf-style-panel button {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 160ms ease,
+    box-shadow 180ms ease,
+    transform 160ms ease;
+}
+
+.mf-theme-menu button:hover,
+.mf-structure-panel button:hover,
+.mf-style-panel button:hover {
+  border-color: var(--mf-ui-border-strong);
+}
+
+.mf-toolbar button {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 180ms ease;
+}
+
+.mf-toolbar button:hover {
+  transform: translateY(-1px);
+}
+
+.mf-toolbar button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.react-flow__node,
+.react-flow__node > * {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.react-flow__node.mf-node-dragging {
+  z-index: 1000 !important;
+  opacity: 0.7;
+  filter: brightness(1.12) drop-shadow(0 18px 36px rgb(15 23 42 / 0.28)) drop-shadow(0 6px 12px rgb(15 23 42 / 0.14));
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.dark .react-flow__node.mf-node-dragging {
+  filter: brightness(1.18) drop-shadow(0 18px 40px rgb(0 0 0 / 0.5)) drop-shadow(0 6px 14px rgb(0 0 0 / 0.3));
+}
+
+.react-flow__node.mf-node-dragging > * {
+  box-shadow: 0 0 0 2.5px rgb(59 130 246 / 0.5), 0 0 16px 2px rgb(59 130 246 / 0.18), 0 24px 48px -10px rgb(15 23 42 / 0.22) !important;
+  border-radius: inherit;
+}
+
+.react-flow.mf-focus-engaged {
+  box-shadow: none;
+}
+
+.dark .react-flow.mf-focus-engaged {
+  box-shadow:
+    inset 0 0 0 9999px rgb(2 6 23 / 0.18),
+    inset 0 0 160px rgb(2 6 23 / 0.12);
+}
+
+.react-flow.mf-focus-engaged .react-flow__node,
+.react-flow.mf-focus-engaged .react-flow__edge {
+  transition: opacity 220ms ease, filter 220ms ease, transform 220ms ease;
+}
+
+.mf-edge-particle-group {
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+.mf-edge-energy-halo {
+  opacity: 0.14;
+}
+
+.mf-edge-energy-aura {
+  opacity: 0.28;
+}
+
+.mf-edge-particle-group-subtle {
+  opacity: 0.66;
+}
+
+.mf-edge-subtle-packet {
+  opacity: 0.22;
+}
+
+.mf-edge-subtle-core {
+  opacity: 0.36;
+}
+
+.mf-edge-particle-group-tech {
+  opacity: 0.9;
+}
+
+.mf-edge-tech-packet {
+  opacity: 0.78;
+}
+
+.mf-edge-tech-bolt {
+  opacity: 0.82;
+}
+
+.mf-edge-tech-core {
+  opacity: 0.92;
+}
+
+.mf-edge-tech-packet-trail {
+  opacity: 0.16;
+}
+
+.mf-edge-particle {
+  opacity: 0.82;
+}
+
+.mf-edge-particle-core {
+  opacity: 0.96;
+}
+
+.dark .mf-edge-particle-group {
+  opacity: 1;
+}
+
+.dark .mf-edge-energy-halo {
+  opacity: 0.28;
+}
+
+.dark .mf-edge-energy-aura {
+  opacity: 0.5;
+}
+
+.dark .mf-edge-particle {
+  opacity: 0.96;
+}
+
+.dark .mf-edge-particle-group-tech {
+  opacity: 1;
+}
+
+.dark .mf-edge-tech-packet {
+  opacity: 0.9;
+}
+
+.dark .mf-edge-tech-bolt {
+  opacity: 0.95;
+}
+
+.dark .mf-edge-tech-packet-trail {
+  opacity: 0.24;
+}
+
+.react-flow.mf-focus-engaged .react-flow__node.mf-node-muted {
+  opacity: 0.22;
+  filter: saturate(0.32) blur(2.4px) brightness(1.03);
+  transform: scale(0.988);
+}
+
+.dark .react-flow.mf-focus-engaged .react-flow__node.mf-node-muted {
+  opacity: 0.14;
+  filter: saturate(0.55) blur(0.6px) brightness(0.92);
+  transform: scale(0.992);
+}
+
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .react-flow__edge-path {
+  opacity: 0.06 !important;
+  filter: blur(1.2px);
+}
+
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-particle-group,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted {
+  opacity: 0.04;
+  filter: blur(1.8px);
+}
+
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-energy-halo,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-energy-aura,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-particle,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-particle-core,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-tech-packet,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-tech-bolt,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-tech-core,
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-tech-packet-trail,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-energy-halo,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-energy-aura,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-particle,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-particle-core,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-tech-packet,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-tech-bolt,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-tech-core,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted .mf-edge-tech-packet-trail {
+  opacity: 0;
+}
+
+.dark .react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .react-flow__edge-path {
+  opacity: 0.08 !important;
+  filter: none;
+}
+
+.dark .react-flow.mf-focus-engaged .react-flow__edge.mf-edge-muted .mf-edge-particle-group,
+.dark .react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-muted {
+  opacity: 0.08;
+  filter: none;
+}
+
+.react-flow__node.mf-node-focus-active {
+  z-index: 6 !important;
+  filter: saturate(1.02) brightness(1.03);
+}
+
+.react-flow.mf-focus-engaged .react-flow__node.mf-node-focus-active > * {
+  box-shadow:
+    0 18px 38px -16px rgb(15 23 42 / 0.36),
+    0 0 0 1px rgb(255 255 255 / 0.55),
+    0 0 0 6px rgb(255 255 255 / 0.08);
+}
+
+.dark .react-flow.mf-focus-engaged .react-flow__node.mf-node-focus-active > * {
+  box-shadow:
+    0 20px 42px -16px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(255 255 255 / 0.12),
+    0 0 0 6px rgb(255 255 255 / 0.04);
+}
+
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-focus-active .react-flow__edge-path {
+  stroke-opacity: 0.95 !important;
+  filter: drop-shadow(0 0 12px rgb(59 130 246 / 0.12));
+}
+
+.react-flow.mf-focus-engaged .react-flow__edge.mf-edge-focus-active .mf-edge-particle-group,
+.react-flow.mf-focus-engaged .mf-edge-particle-group.mf-edge-focus-active {
+  opacity: 1;
+  filter: none;
+}
+
+.dark .react-flow.mf-focus-engaged .react-flow__edge.mf-edge-focus-active .react-flow__edge-path {
+  filter: drop-shadow(0 0 14px rgb(148 163 184 / 0.2));
+}
+
+.react-flow.mf-navigation-mode .react-flow__node {
+  cursor: pointer;
+  transition: filter 180ms ease, opacity 180ms ease;
+}
+
+.react-flow.mf-navigation-mode .react-flow__node:hover:not(.mf-node-dragging) {
+  filter: brightness(1.05);
+}
+
+.react-flow.mf-navigation-mode .react-flow__node:hover:not(.mf-node-dragging) > * {
+  box-shadow: 0 8px 20px -4px rgb(15 23 42 / 0.12);
+}
+
+.react-flow.mf-selection-mode,
+.react-flow.mf-selection-mode .react-flow__pane {
+  cursor: crosshair;
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--mf-ui-border);
+  background: var(--mf-ui-panel-strong);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--mf-ui-shadow-strong);
+}
+
+.react-flow__controls-button {
+  height: 36px;
+  width: 36px;
+  border-bottom: 1px solid var(--mf-ui-border);
+  background: transparent;
+  color: var(--mf-ui-muted);
+  fill: var(--mf-ui-muted);
+  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--mf-ui-button-hover);
+  color: var(--mf-ui-text);
+  fill: var(--mf-ui-text);
+}
+
+.react-flow__controls-button:active {
+  transform: scale(0.97);
+}
+
+.react-flow.mf-exporting .react-flow__controls,
+.react-flow.mf-exporting .react-flow__minimap,
+.react-flow.mf-exporting .react-flow__panel,
+.react-flow.mf-exporting .react-flow__attribution {
+  display: none !important;
+}
+
+.react-flow__node.mf-node-drop-target {
+  filter: saturate(1.15) brightness(1.04);
+}
+
+.react-flow__node.mf-node-drop-target > * {
+  box-shadow: 0 0 0 2.5px rgb(59 130 246 / 0.45), 0 0 20px 4px rgb(59 130 246 / 0.12);
+}
+
+.react-flow__node.selected > *,
+.react-flow__node:has(.ring-4) > * {
+  box-shadow: 0 14px 34px rgb(15 23 42 / 0.16);
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-opacity: 0.92 !important;
+  filter: drop-shadow(0 0 10px rgb(59 130 246 / 0.22));
+}
+
+.react-flow.mf-clean-mode .react-flow__minimap,
+.react-flow.mf-clean-mode .react-flow__controls,
+.react-flow.mf-clean-mode .react-flow__panel {
+  display: none !important;
+}
