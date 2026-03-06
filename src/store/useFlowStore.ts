@@ -121,22 +121,28 @@ const canConnectEdge = ({
   target,
   edges,
   ignoreEdgeId,
+  replaceTargetParent = false,
 }: {
   source: string;
   target: string;
   edges: MindFlowEdge[];
   ignoreEdgeId?: string;
+  replaceTargetParent?: boolean;
 }) => {
   if (!source || !target) return { valid: false, reason: 'invalid' as const };
   if (source === target) return { valid: false, reason: 'self' as const };
 
-  const normalizedEdges = edges.filter((edge) => edge.id !== ignoreEdgeId);
+  const normalizedEdges = edges.filter(
+    (edge) => edge.id !== ignoreEdgeId && (!replaceTargetParent || edge.target !== target),
+  );
 
   const duplicate = normalizedEdges.find((edge) => edge.source === source && edge.target === target);
   if (duplicate) return { valid: false, reason: 'duplicate' as const };
 
-  const incoming = normalizedEdges.find((edge) => edge.target === target && edge.source !== source);
-  if (incoming) return { valid: false, reason: 'parent' as const };
+  if (!replaceTargetParent) {
+    const incoming = normalizedEdges.find((edge) => edge.target === target && edge.source !== source);
+    if (incoming) return { valid: false, reason: 'parent' as const };
+  }
 
   const stack = [target];
   const visited = new Set<string>();
@@ -252,10 +258,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
   onConnect: (connection: Connection) => {
     if (!connection.source || !connection.target) return;
+    const { nodes, edges } = get();
     const validation = canConnectEdge({
       source: connection.source,
       target: connection.target,
-      edges: get().edges,
+      edges,
+      replaceTargetParent: true,
     });
     if (!validation.valid) {
       console.info('[MindFlow] conexão bloqueada:', validation.reason);
@@ -263,26 +271,37 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
     set({ saveStatus: 'unsaved' });
     get().pushHistory();
+    const nextEdge: MindFlowEdge = {
+      id: `e-${connection.source}-${connection.target}-${uuidv4()}`,
+      source: connection.source,
+      target: connection.target,
+      sourceHandle: connection.sourceHandle || 'right',
+      targetHandle: connection.targetHandle || 'left',
+      type: 'animated',
+      animated: false,
+    };
+    const targetNode = nodes.find((node) => node.id === connection.target);
     set({
-      edges: addEdge(
-        {
-          ...connection,
-          sourceHandle: connection.sourceHandle || 'right',
-          targetHandle: connection.targetHandle || 'left',
-          type: 'animated',
-          animated: true,
-        },
-        get().edges,
-      ) as MindFlowEdge[],
+      edges: [
+        ...edges.filter((edge) => (targetNode?.type === 'idea' ? edge.target !== connection.target : true)),
+        nextEdge,
+      ],
     });
+    if (targetNode?.type === 'idea' || connection.source) {
+      requestAnimationFrame(() => {
+        get().autoLayout();
+      });
+    }
   },
   onReconnect: (oldEdge, newConnection) => {
     if (!newConnection.source || !newConnection.target) return;
+    const { nodes, edges } = get();
     const validation = canConnectEdge({
       source: newConnection.source,
       target: newConnection.target,
-      edges: get().edges,
+      edges,
       ignoreEdgeId: oldEdge.id,
+      replaceTargetParent: true,
     });
     if (!validation.valid) {
       console.info('[MindFlow] reconexão bloqueada:', validation.reason);
@@ -290,6 +309,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
     set({ saveStatus: 'unsaved' });
     get().pushHistory();
+    const targetNode = nodes.find((node) => node.id === newConnection.target);
     set({
       edges: reconnectEdge(
         oldEdge,
@@ -298,9 +318,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           sourceHandle: newConnection.sourceHandle || 'right',
           targetHandle: newConnection.targetHandle || 'left',
         },
-        get().edges,
+        edges.filter((edge) => (targetNode?.type === 'idea' && edge.id !== oldEdge.id ? edge.target !== newConnection.target : true)),
       ) as MindFlowEdge[],
     });
+    if (targetNode?.type === 'idea') {
+      requestAnimationFrame(() => {
+        get().autoLayout();
+      });
+    }
   },
   setNodes: (nodes) => {
     set({ nodes: typeof nodes === 'function' ? nodes(get().nodes) : nodes });
@@ -312,7 +337,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({ saveStatus: 'unsaved' });
     get().pushHistory();
     set({ nodes: [...get().nodes, node] });
-    if (get().settings.autoLayoutOnInsert) {
+    if (node.type === 'idea' || get().settings.autoLayoutOnInsert) {
       requestAnimationFrame(() => {
         get().autoLayout();
       });
@@ -567,7 +592,17 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
     const subtreeNodes = nodes.filter((node) => subtreeIds.has(node.id) && !node.hidden && node.parentId === root.parentId);
     const subtreeNodeIds = new Set(subtreeNodes.map((node) => node.id));
-    const subtreeEdges = edges.filter((edge) => subtreeNodeIds.has(edge.source) && subtreeNodeIds.has(edge.target) && !edge.hidden);
+    const subtreeNodeById = new Map(subtreeNodes.map((node) => [node.id, node]));
+    const subtreeEdges = edges
+      .filter((edge) => subtreeNodeIds.has(edge.source) && subtreeNodeIds.has(edge.target) && !edge.hidden)
+      .sort((a, b) => {
+        if (a.source !== b.source) return a.source.localeCompare(b.source);
+        const nodeA = subtreeNodeById.get(a.target);
+        const nodeB = subtreeNodeById.get(b.target);
+        const orderA = typeof nodeA?.data.order === 'number' ? nodeA.data.order : nodeA?.position.y || 0;
+        const orderB = typeof nodeB?.data.order === 'number' ? nodeB.data.order : nodeB?.position.y || 0;
+        return orderA - orderB;
+      });
     if (subtreeNodes.length <= 1) return;
 
     const layoutConfig = layoutType === 'orgchart'
@@ -682,11 +717,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const previousPositions = new Map(visibleNodes.map((node) => [node.id, node.position]));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
 
+    const isCanvasReset = !!options?.fitView;
     const layoutConfig = nextLayoutType === 'orgchart'
-      ? { rankdir: 'TB' as const, nodesep: 80, ranksep: 120 }
+      ? { rankdir: 'TB' as const, nodesep: isCanvasReset ? 120 : 80, ranksep: isCanvasReset ? 170 : 120 }
       : nextLayoutType === 'list'
-        ? { rankdir: 'TB' as const, nodesep: 24, ranksep: 60 }
-        : { rankdir: 'LR' as const, nodesep: 80, ranksep: 150 };
+        ? { rankdir: 'TB' as const, nodesep: isCanvasReset ? 36 : 24, ranksep: isCanvasReset ? 88 : 60 }
+        : { rankdir: 'LR' as const, nodesep: isCanvasReset ? 120 : 80, ranksep: isCanvasReset ? 210 : 150 };
 
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
@@ -701,7 +737,17 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       dagreGraph.setNode(node.id, { width, height });
     });
 
-    const visibleEdges = edges.filter((edge) => !edge.hidden && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
+    const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
+    const visibleEdges = edges
+      .filter((edge) => !edge.hidden && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+      .sort((a, b) => {
+        if (a.source !== b.source) return a.source.localeCompare(b.source);
+        const nodeA = nodeById.get(a.target);
+        const nodeB = nodeById.get(b.target);
+        const orderA = typeof nodeA?.data.order === 'number' ? nodeA.data.order : nodeA?.position.y || 0;
+        const orderB = typeof nodeB?.data.order === 'number' ? nodeB.data.order : nodeB?.position.y || 0;
+        return orderA - orderB;
+      });
     visibleEdges.forEach((edge) => {
       if (edge.hidden) return;
       dagreGraph.setEdge(edge.source, edge.target);
@@ -731,34 +777,36 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const incomingTargets = new Set(visibleEdges.map((edge) => edge.target));
     const rootNodes = visibleNodes.filter((node) => !incomingTargets.has(node.id));
 
-    const rootAnchors = new Map<string, number>();
-    rootNodes.forEach((root) => {
-      const previous = previousPositions.get(root.id);
-      const next = positionedByDagre.get(root.id);
-      if (!previous || !next) return;
-      rootAnchors.set(root.id, previous.y - next.y);
-    });
-
     const appliedDeltaByNode = new Map<string, number>();
-    rootNodes.forEach((root) => {
-      const deltaY = rootAnchors.get(root.id);
-      if (deltaY === undefined) return;
+    if (!isCanvasReset) {
+      const rootAnchors = new Map<string, number>();
+      rootNodes.forEach((root) => {
+        const previous = previousPositions.get(root.id);
+        const next = positionedByDagre.get(root.id);
+        if (!previous || !next) return;
+        rootAnchors.set(root.id, previous.y - next.y);
+      });
 
-      const queue = [root.id];
-      const visited = new Set<string>();
-      while (queue.length > 0) {
-        const current = queue.shift();
-        if (!current || visited.has(current)) continue;
-        visited.add(current);
+      rootNodes.forEach((root) => {
+        const deltaY = rootAnchors.get(root.id);
+        if (deltaY === undefined) return;
 
-        if (!appliedDeltaByNode.has(current)) {
-          appliedDeltaByNode.set(current, deltaY);
+        const queue = [root.id];
+        const visited = new Set<string>();
+        while (queue.length > 0) {
+          const current = queue.shift();
+          if (!current || visited.has(current)) continue;
+          visited.add(current);
+
+          if (!appliedDeltaByNode.has(current)) {
+            appliedDeltaByNode.set(current, deltaY);
+          }
+
+          const children = outgoingBySource.get(current) || [];
+          children.forEach((childId) => queue.push(childId));
         }
-
-        const children = outgoingBySource.get(current) || [];
-        children.forEach((childId) => queue.push(childId));
-      }
-    });
+      });
+    }
 
     const isVertical = nextLayoutType === 'orgchart' || nextLayoutType === 'list';
     const layoutedNodes = nodes.map((node) => {

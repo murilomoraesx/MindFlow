@@ -76,6 +76,10 @@ const normalizeNodeData = (nodeType: NodeType, rawData: unknown): NodeData => {
     ...data,
     label,
     color: typeof data.color === 'string' ? data.color : nodeType === 'idea' ? IDEA_ROOT_COLOR : nodeType === 'funnel' ? '#DC2626' : '#8B5CF6',
+    textBold: !!data.textBold,
+    textItalic: !!data.textItalic,
+    textUnderline: !!data.textUnderline,
+    textStrike: !!data.textStrike,
     startingTraffic,
     funnelExpanded: !!data.funnelExpanded,
     isEditing: false,
@@ -86,7 +90,7 @@ const normalizeNodeData = (nodeType: NodeType, rawData: unknown): NodeData => {
     notePriority: data.notePriority === 'low' || data.notePriority === 'high' || data.notePriority === 'medium' ? data.notePriority : 'medium',
     noteChecklist: typeof data.noteChecklist === 'string' ? data.noteChecklist : '',
     notePinned: !!data.notePinned,
-    imageFit: data.imageFit === 'contain' || data.imageFit === 'cover' ? data.imageFit : 'cover',
+    imageFit: data.imageFit === 'contain' || data.imageFit === 'cover' ? data.imageFit : 'contain',
     imageFrame:
       data.imageFrame === 'polaroid' || data.imageFrame === 'circle' || data.imageFrame === 'rounded' ? data.imageFrame : 'rounded',
     imageFilter:

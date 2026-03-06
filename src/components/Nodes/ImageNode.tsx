@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { Image as ImageIcon, Link2, MessageSquare, Upload } from 'lucide-react';
 import { MindFlowNode } from '../../types';
 import { cn } from '../../utils/cn';
@@ -24,14 +24,16 @@ const CAPTION_ALIGN_CLASS: Record<CaptionAlign, string> = {
 };
 
 const HANDLE_CLASS =
-  '!h-3.5 !w-3.5 rounded-full border-2 border-white bg-sky-500 shadow-[0_0_0_2px_rgba(14,165,233,0.35)] dark:border-slate-900 dark:bg-sky-400';
+  'h-2.5 w-2.5 rounded-full border-none bg-slate-400';
 
-export const ImageNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) => {
-  const { dropTargetId } = useFlowStore();
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+export const ImageNode = memo(({ id, data, selected, width, height }: NodeProps<MindFlowNode>) => {
+  const { dropTargetId, updateNodeData, setShowStylePanel } = useFlowStore();
 
   const label = String(data.label || 'Imagem');
   const imageUrl = String(data.imageUrl || '').trim();
-  const fit = ((data.imageFit as ImageFit) || 'cover') as ImageFit;
+  const fit = ((data.imageFit as ImageFit) || 'contain') as ImageFit;
   const frame = ((data.imageFrame as ImageFrame) || 'rounded') as ImageFrame;
   const filter = ((data.imageFilter as ImageFilter) || 'none') as ImageFilter;
   const captionAlign = ((data.imageCaptionAlign as CaptionAlign) || 'center') as CaptionAlign;
@@ -41,6 +43,10 @@ export const ImageNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) 
     : 0;
 
   const isDropTarget = id === dropTargetId;
+  const nodeWidth = clamp(Number(width || data.width || 248), 180, 960);
+  const nodeHeight = clamp(Number(height || data.height || 220), 160, 960);
+  const innerHeight = frame === 'polaroid' ? Math.max(140, nodeHeight - 16) : nodeHeight;
+  const mediaHeight = Math.max(frame === 'circle' ? 120 : 96, innerHeight - (frame === 'polaroid' ? 62 : 52));
 
   const sourceDomain = useMemo(() => {
     if (!imageUrl) return '';
@@ -58,8 +64,8 @@ export const ImageNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) 
   };
 
   const mediaWrapperClasses = cn(
-    'relative w-[248px] overflow-hidden bg-slate-100 dark:bg-slate-800/70',
-    frame === 'circle' ? 'h-[248px] rounded-[24px]' : 'h-[160px] rounded-xl',
+    'relative w-full flex-1 overflow-hidden bg-slate-100 dark:bg-slate-800/70',
+    frame === 'circle' ? 'rounded-[24px]' : 'rounded-xl',
   );
 
   return (
@@ -70,14 +76,38 @@ export const ImageNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) 
         selected && 'ring-2 ring-sky-500/45',
         isDropTarget && 'ring-4 ring-blue-400/40',
       )}
+      style={{ width: nodeWidth, height: innerHeight }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        setShowStylePanel(true);
+      }}
     >
-      <Handle type="source" id="top" position={Position.Top} className={HANDLE_CLASS} />
-      <Handle type="source" id="left" position={Position.Left} className={HANDLE_CLASS} />
+      <NodeResizer
+        isVisible={selected}
+        minWidth={180}
+        minHeight={160}
+        maxWidth={960}
+        maxHeight={960}
+        lineClassName="!border-sky-400/45"
+        handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-sky-500 dark:!border-slate-950"
+        onResizeEnd={(_, params) => {
+          updateNodeData(
+            id,
+            {
+              width: Math.round(params.width),
+              height: Math.round(params.height),
+            },
+            false,
+          );
+        }}
+      />
+      <Handle type="target" id="top" position={Position.Top} className={HANDLE_CLASS} />
+      <Handle type="target" id="left" position={Position.Left} className={HANDLE_CLASS} />
       <Handle type="source" id="bottom" position={Position.Bottom} className={HANDLE_CLASS} />
       <Handle type="source" id="right" position={Position.Right} className={HANDLE_CLASS} />
 
-      <div className={cn('flex flex-col', frame === 'polaroid' && 'gap-2')}>
-        <div className={mediaWrapperClasses}>
+      <div className={cn('flex h-full flex-col', frame === 'polaroid' && 'gap-2')}>
+        <div className={mediaWrapperClasses} style={{ minHeight: mediaHeight }}>
           {imageUrl ? (
             <img
               src={imageUrl}

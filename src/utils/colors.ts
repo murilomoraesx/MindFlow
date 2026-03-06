@@ -9,6 +9,29 @@ export const COLORS = {
   gray: '#5C5C72',
 };
 
+export const SHARED_COLOR_PALETTE = [
+  '#64748B',
+  '#0F172A',
+  '#18304A',
+  '#0256DE',
+  '#3B82F6',
+  '#06B6D4',
+  '#22C55E',
+  '#C0E700',
+  '#B0FA36',
+  '#EAB308',
+  '#F97316',
+  '#EF4444',
+  '#D01D80',
+  '#D946EF',
+  '#F43F5E',
+  '#FFFFFF',
+  '#FF6B6B',
+  '#4ECDC4',
+  '#45B7D1',
+  '#96CEB4',
+] as const;
+
 export const GRADIENTS = {
   idea: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
   funnel: 'linear-gradient(135deg, #EC4899, #8B5CF6)',

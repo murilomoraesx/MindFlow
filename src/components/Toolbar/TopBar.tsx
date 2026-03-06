@@ -3,13 +3,14 @@ import { Undo2, Redo2, Download, Moon, Sun, Menu, Save, ChevronLeft, ChevronDown
 import type { EdgeAnimationStyle, LayoutType } from '../../types';
 import { exportFlowToPdf } from '../../utils/export';
 import { downloadTextFile, exportMapToMarkdown } from '../../utils/mapExchange';
+import { SHARED_COLOR_PALETTE } from '../../utils/colors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CANVAS_POINTER_EVENT = 'mindflow:canvas-pointerdown';
 
 const LIGHT_THEMES = [
-  { id: 'elegante' as const, label: 'Elegante', desc: 'Sofisticado e refinado', tone: 'from-amber-100 via-rose-50 to-violet-100' },
   { id: 'moderno' as const, label: 'Moderno', desc: 'Limpo e profissional', tone: 'from-sky-100 via-blue-50 to-indigo-100' },
+  { id: 'elegante' as const, label: 'Elegante', desc: 'Sofisticado e refinado', tone: 'from-amber-100 via-rose-50 to-violet-100' },
   { id: 'tech' as const, label: 'Tech', desc: 'Futurista com grid', tone: 'from-violet-200 via-indigo-100 to-cyan-100' },
   { id: 'retro' as const, label: 'Retrô', desc: 'Vintage e aconchegante', tone: 'from-orange-100 via-amber-50 to-yellow-100' },
 ];
@@ -74,6 +75,26 @@ export const TopBar = () => {
 
   const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const globalEdgeColor = useMemo(() => {
+    if (edges.length === 0) return undefined;
+    const [firstEdge] = edges;
+    const firstColor = firstEdge?.data?.color as string | undefined;
+    return edges.every((edge) => (edge.data?.color as string | undefined) === firstColor) ? firstColor : null;
+  }, [edges]);
+  const globalEdgeVariant = useMemo(() => {
+    if (edges.length === 0) return 'glow';
+    const [firstEdge] = edges;
+    const firstVariant = (firstEdge?.data?.variant as 'solid' | 'dashed' | 'glow' | undefined) || 'glow';
+    return edges.every((edge) => ((edge.data?.variant as 'solid' | 'dashed' | 'glow' | undefined) || 'glow') === firstVariant)
+      ? firstVariant
+      : null;
+  }, [edges]);
+  const globalEdgeThickness = useMemo(() => {
+    if (edges.length === 0) return '2';
+    const [firstEdge] = edges;
+    const firstThickness = String(firstEdge?.data?.thickness || '2');
+    return edges.every((edge) => String(edge.data?.thickness || '2') === firstThickness) ? firstThickness : null;
+  }, [edges]);
 
   useEffect(() => {
     if (!showThemeMenu) return;
@@ -128,16 +149,6 @@ export const TopBar = () => {
     { id: 'energy', label: 'Energia', desc: 'Brilho vivo correndo na linha' },
     { id: 'subtle', label: 'Sutil', desc: 'Pacotes finos e discretos no fluxo' },
     { id: 'tech', label: 'Tech', desc: 'Pulsos elétricos mais tecnológicos' },
-  ];
-  const EDGE_FLOW_COLORS = [
-    '#8B5CF6',
-    '#22C55E',
-    '#06B6D4',
-    '#F59E0B',
-    '#EC4899',
-    '#EF4444',
-    '#FFFFFF',
-    '#94A3B8',
   ];
   const handleExportPDF = async () => {
     try {
@@ -501,21 +512,30 @@ export const TopBar = () => {
                     <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400">Canvas inteiro</span>
                     <button
                       onClick={() => handleApplyGlobalEdgeColor(undefined)}
-                      className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        globalEdgeColor === undefined
+                          ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300'
+                          : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
                     >
                       Automático
                     </button>
                   </div>
                   <div className="mb-3">
                     <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-slate-400">Cor</div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {EDGE_FLOW_COLORS.map((color) => (
+                    <div className="flex flex-wrap gap-2">
+                      {SHARED_COLOR_PALETTE.map((color) => (
                         <button
                           key={color}
                           onClick={() => handleApplyGlobalEdgeColor(color)}
-                          className="h-7 rounded-lg border border-white/40 shadow-sm transition-transform hover:scale-[1.04]"
+                          className={`h-5 w-5 rounded-full border-2 shadow-sm transition-transform hover:scale-110 ${
+                            globalEdgeColor === color
+                              ? 'scale-110 border-white ring-2 ring-amber-400 dark:border-slate-950 dark:ring-amber-500'
+                              : 'border-transparent'
+                          }`}
                           style={{ backgroundColor: color }}
                           title={`Aplicar ${color} em todas as linhas`}
+                          aria-label={`Aplicar ${color} em todas as linhas`}
                         />
                       ))}
                     </div>
@@ -531,7 +551,11 @@ export const TopBar = () => {
                         <button
                           key={variant.value}
                           onClick={() => handleApplyGlobalEdgeVariant(variant.value as 'solid' | 'dashed' | 'glow')}
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                          className={`rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors ${
+                            globalEdgeVariant === variant.value
+                              ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
                         >
                           {variant.label}
                         </button>
@@ -549,7 +573,11 @@ export const TopBar = () => {
                         <button
                           key={thickness.value}
                           onClick={() => handleApplyGlobalEdgeThickness(thickness.value)}
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                          className={`rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors ${
+                            globalEdgeThickness === thickness.value
+                              ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-300'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
                         >
                           {thickness.label}
                         </button>

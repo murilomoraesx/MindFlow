@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { MindFlowNode } from '../../types';
 import { cn } from '../../utils/cn';
@@ -32,9 +32,31 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
 
   const depth = getDepth(id);
   const color = (data.color as string) || getDefaultIdeaColorByDepth(depth);
+  const parsedColor = useMemo(() => {
+    const normalized = color.trim();
+    const source = normalized.startsWith('#') ? normalized.slice(1) : normalized;
+    const hex = source.length === 3 ? source.split('').map((char) => `${char}${char}`).join('') : source;
+    if (hex.length !== 6) return null;
+    const int = Number.parseInt(hex, 16);
+    if (Number.isNaN(int)) return null;
+    return {
+      r: (int >> 16) & 255,
+      g: (int >> 8) & 255,
+      b: int & 255,
+    };
+  }, [color]);
+  const toAlpha = (alpha: number) => {
+    if (!parsedColor) return `rgba(139,92,246,${alpha})`;
+    return `rgba(${parsedColor.r}, ${parsedColor.g}, ${parsedColor.b}, ${alpha})`;
+  };
   const descendantTextColor = depth >= 2 && color === IDEA_DESCENDANT_TEXT_COLOR && theme === 'dark' ? '#f8fafc' : color;
   const label = String(data.label || '');
   const hasLabel = label.trim().length > 0;
+  const textBold = !!data.textBold;
+  const textItalic = !!data.textItalic;
+  const textUnderline = !!data.textUnderline;
+  const textStrike = !!data.textStrike;
+  const textDecoration = [textUnderline ? 'underline' : '', textStrike ? 'line-through' : ''].filter(Boolean).join(' ');
   const openComments = Array.isArray(data.comments)
     ? data.comments.filter((comment) => comment && typeof comment === 'object' && !(comment as { resolved?: boolean }).resolved).length
     : 0;
@@ -117,35 +139,49 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
   let nodeStyles = "";
   let textStyles = "text-sm font-medium text-slate-900 dark:text-slate-100";
   let dynamicInlineStyles: React.CSSProperties = {};
+  const labelInlineStyles: React.CSSProperties = {
+    fontWeight: textBold ? 700 : undefined,
+    fontStyle: textItalic ? 'italic' : undefined,
+    textDecoration,
+  };
 
   if (depth === 0) {
-    // Level 1: Solid background, Bold text
+    // Level 1: Gradient background with glass shimmer
     textStyles = "text-sm font-bold text-white";
-    nodeStyles = "border-2 border-transparent font-bold";
+    nodeStyles = "border border-white/20 font-bold backdrop-blur-sm";
     dynamicInlineStyles = {
-      backgroundColor: color,
-      boxShadow: selected ? `0 4px 20px -4px ${color}90` : `0 2px 10px -2px ${color}60`
+      background: `linear-gradient(135deg, ${color} 0%, ${color}dd 50%, ${color}bb 100%)`,
+      boxShadow: selected
+        ? `0 8px 32px -4px ${color}80, 0 0 0 2px ${color}40, inset 0 1px 0 rgb(255 255 255 / 0.18)`
+        : `0 4px 18px -4px ${color}60, inset 0 1px 0 rgb(255 255 255 / 0.14)`,
     };
   } else if (depth === 1) {
     // Level 2: Hollow (white/dark bg), colored border
     textStyles = "text-sm font-medium text-slate-900 dark:text-slate-100";
     nodeStyles = "border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800 scale-[0.98]";
     dynamicInlineStyles = {
-      borderColor: selected ? color : undefined,
-      boxShadow: selected ? `0 4px 20px -4px ${color}40` : undefined,
+      borderColor: selected ? color : toAlpha(theme === 'dark' ? 0.38 : 0.26),
+      background: `linear-gradient(135deg, ${toAlpha(theme === 'dark' ? 0.16 : 0.12)} 0%, ${
+        theme === 'dark' ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.96)'
+      } 68%)`,
+      boxShadow: selected ? `0 4px 20px -4px ${color}40` : `0 10px 24px -18px ${toAlpha(0.65)}`,
       borderLeftWidth: '4px',
-      borderLeftColor: color
+      borderLeftColor: color,
     };
   } else {
     // Level 3+: Text only, transparent bg, no border
     textStyles = "text-sm font-medium";
     nodeStyles = "bg-transparent scale-[0.95]";
     dynamicInlineStyles = {
-      color: descendantTextColor
+      color: descendantTextColor,
+      textShadow: `0 0 0 ${toAlpha(0.001)}`,
     };
 
     if (!hasLabel || isEditing) {
       nodeStyles += " rounded-md border border-dashed border-slate-300 dark:border-slate-600 min-h-[44px]";
+    } else {
+      nodeStyles += " rounded-md px-3 py-2";
+      dynamicInlineStyles.background = `linear-gradient(135deg, ${toAlpha(theme === 'dark' ? 0.18 : 0.1)}, transparent 65%)`;
     }
   }
 
@@ -161,7 +197,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
   return (
     <div
       className={cn(
-        'group relative min-w-[120px] rounded-lg px-4 py-3',
+        'group relative min-w-[120px] max-w-[280px] rounded-lg px-4 py-3',
         nodeStyles
       )}
       style={dynamicInlineStyles}
@@ -170,7 +206,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
       <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
       <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
 
-      <div className="flex flex-col items-center justify-center text-center">
+      <div className="flex w-full flex-col items-center justify-center text-center">
         {data.badge && (
           <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white dark:bg-slate-200 dark:text-slate-900">
             {data.badge}
@@ -192,10 +228,19 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
                 commitEdit();
               }
             }}
-            style={depth >= 2 ? { color: descendantTextColor } : {}}
+            style={{
+              ...labelInlineStyles,
+              ...(depth >= 2 ? { color: descendantTextColor } : {}),
+            }}
           />
         ) : (
-          <div className={textStyles} style={depth >= 2 ? { color: descendantTextColor } : {}}>
+          <div
+            className={cn(textStyles, 'w-full break-words')}
+            style={{
+              ...labelInlineStyles,
+              ...(depth >= 2 ? { color: descendantTextColor } : {}),
+            }}
+          >
             {hasLabel ? label : <span className="opacity-0">.</span>}
           </div>
         )}
@@ -211,7 +256,12 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
         )}
 
         {data.description && (
-          <div className={cn("mt-1 text-xs", depth === 0 ? "text-white/80" : "text-slate-500 dark:text-slate-400")}>
+          <div
+            className={cn(
+              "mt-1 w-full whitespace-pre-wrap break-words text-xs leading-relaxed",
+              depth === 0 ? "text-white/80" : "text-slate-500 dark:text-slate-400",
+            )}
+          >
             {data.description}
           </div>
         )}

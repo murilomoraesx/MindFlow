@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { MindFlowNode, MindFlowEdge, NodeType } from '../types';
 import { resolveNodeCollision } from '../utils/nodeLayout';
 import { createRelatedIdea } from '../utils/ideaActions';
+import { createPastedNode, getCopiedNodeSnapshot, setCopiedNodeSnapshot } from '../utils/nodeClipboard';
 
 export const useKeyboardShortcuts = () => {
   const {
@@ -106,6 +107,38 @@ export const useKeyboardShortcuts = () => {
           snapshotNodes = snapshotNodes.concat(duplicatedNode);
           addNode(duplicatedNode);
         });
+      }
+
+      if (isMod && !e.shiftKey && e.key.toLowerCase() === 'c') {
+        const selectedNodes = getNodes().filter((node) => node.selected) as MindFlowNode[];
+        if (selectedNodes.length === 1) {
+          e.preventDefault();
+          setCopiedNodeSnapshot(selectedNodes[0]);
+        }
+      }
+
+      if (isMod && !e.shiftKey && e.key.toLowerCase() === 'v') {
+        const copiedNode = getCopiedNodeSnapshot();
+        if (copiedNode) {
+          e.preventDefault();
+          const position = resolveNodeCollision({
+            basePosition: {
+              x: copiedNode.position.x + 56,
+              y: copiedNode.position.y + 56,
+            },
+            nodeType: copiedNode.type as NodeType,
+            nodes: getNodes() as MindFlowNode[],
+          });
+          const pastedNode = createPastedNode(copiedNode, position);
+          addNode(pastedNode);
+          setNodes((currentNodes) =>
+            currentNodes.map((currentNode) =>
+              currentNode.id === pastedNode.id
+                ? ({ ...currentNode, selected: true } as MindFlowNode)
+                : ({ ...currentNode, selected: false } as MindFlowNode),
+            ),
+          );
+        }
       }
 
       // Disconnect selected nodes: Cmd/Ctrl+Shift+D

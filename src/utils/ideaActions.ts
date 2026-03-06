@@ -36,6 +36,14 @@ export const createRelatedIdea = ({
 
   const parentDepth = getNodeDepth(parentNode.id, edges);
   const newNodeDepth = parentDepth + 1;
+  const siblingNodes = edges
+    .filter((edge) => edge.source === parentNode.id)
+    .map((edge) => nodes.find((node) => node.id === edge.target))
+    .filter((node): node is MindFlowNode => !!node && !node.hidden);
+  const nextSiblingOrder = siblingNodes.reduce((maxOrder, node, index) => {
+    const explicitOrder = typeof node.data.order === 'number' ? node.data.order : index + 1;
+    return Math.max(maxOrder, explicitOrder);
+  }, 0) + 1;
   const basePosition = getNextChildBasePosition({
     parentNode,
     nodes,
@@ -57,6 +65,7 @@ export const createRelatedIdea = ({
       label: '',
       color: getDefaultIdeaColorByDepth(newNodeDepth),
       isEditing: true,
+      order: nextSiblingOrder,
     },
     selected: true,
   };

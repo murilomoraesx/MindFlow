@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -9,9 +9,10 @@ import {
   SelectionMode,
   ConnectionMode,
   useViewport,
+  type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ChevronLeft, ChevronRight, Download, PanelRight, Trash2, Unlink2, X } from 'lucide-react';
+import { Bold, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Italic, PanelRight, Plus, Strikethrough, Trash2, Underline, Unlink2, X } from 'lucide-react';
 import { useFlowStore } from '../../store/useFlowStore';
 import { IdeaNode } from '../Nodes/IdeaNode';
 import { FunnelNode } from '../Nodes/FunnelNode';
@@ -26,6 +27,7 @@ import { NodeType, MindFlowEdge, MindFlowNode } from '../../types';
 import { exportFlowToPdf } from '../../utils/export';
 import { getNextRootIdeaColor, getNodeSize, isDescendant, resolveNodeCollision } from '../../utils/nodeLayout';
 import { captureNodesIntoGroup, fitGroupToChildren } from '../../utils/grouping';
+import { createPastedNode, getCopiedNodeSnapshot, setCopiedNodeSnapshot } from '../../utils/nodeClipboard';
 
 const nodeTypes = {
   idea: IdeaNode,
@@ -56,6 +58,54 @@ type NodeContextMenuState = {
   y: number;
 };
 
+type PaneContextMenuState = {
+  x: number;
+  y: number;
+  clientX: number;
+  clientY: number;
+};
+
+type PendingConnectionState = {
+  nodeId: string;
+  handleId: string | null;
+  handleType: 'source' | 'target';
+  clientX: number;
+  clientY: number;
+  ready: boolean;
+  boxX: number | null;
+  boxY: number | null;
+};
+
+const QUICK_CREATE_WIDTH = 156;
+const QUICK_CREATE_HEIGHT = 46;
+const QUICK_CREATE_HOLD_MS = 420;
+
+const getEventClientPoint = (event: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent) => {
+  if ('touches' in event) {
+    const touch = event.touches[0] || event.changedTouches[0];
+    if (!touch) return null;
+    return { x: touch.clientX, y: touch.clientY };
+  }
+
+  return { x: event.clientX, y: event.clientY };
+};
+
+const normalizeHandleSide = (handleId: string | null, fallback: 'top' | 'right' | 'bottom' | 'left') => {
+  if (!handleId) return fallback;
+  if (handleId === 'top' || handleId === 'right' || handleId === 'bottom' || handleId === 'left') {
+    return handleId;
+  }
+  if (handleId.startsWith('stage-')) return 'right';
+  return fallback;
+};
+
+const getOppositeSide = (side: 'top' | 'right' | 'bottom' | 'left') => {
+  if (side === 'top') return 'bottom';
+  if (side === 'bottom') return 'top';
+  if (side === 'left') return 'right';
+  return 'left';
+};
+
 const FlowCanvasInner = () => {
   const {
     nodes,
@@ -68,6 +118,7 @@ const FlowCanvasInner = () => {
     addNode,
     setNodes,
     setEdges,
+    updateNodeData,
     pushHistory,
     setDragState,
     draggedNodeId,
@@ -95,6 +146,12 @@ const FlowCanvasInner = () => {
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuides>({ x: null, y: null });
   const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] = useState<NodeContextMenuState | null>(null);
+  const [paneContextMenu, setPaneContextMenu] = useState<PaneContextMenuState | null>(null);
+  const [pendingConnection, setPendingConnection] = useState<PendingConnectionState | null>(null);
+  const quickCreateRef = useRef<HTMLDivElement>(null);
+  const connectHoldTimeoutRef = useRef<number | null>(null);
+  const connectionActiveRef = useRef(false);
+  const didConnectRef = useRef(false);
 
   useKeyboardShortcuts();
 
@@ -160,6 +217,145 @@ const FlowCanvasInner = () => {
     }
   }, [mapName, theme]);
 
+  const persistIdeaSiblingOrder = useCallback(
+    (parentId: string | null, nodesSnapshot: MindFlowNode[], edgesSnapshot: MindFlowEdge[]) => {
+      if (!parentId) return;
+      const siblingIds = edgesSnapshot.filter((edge) => edge.source === parentId).map((edge) => edge.target);
+      if (siblingIds.length === 0) return;
+
+      const siblingIdSet = new Set(siblingIds);
+      const orderedSiblings = nodesSnapshot
+        .filter((candidate) => siblingIdSet.has(candidate.id) && !candidate.hidden)
+        .sort((a, b) => a.position.y - b.position.y);
+      const orderById = new Map(orderedSiblings.map((sibling, index) => [sibling.id, index + 1]));
+
+      setNodes((currentNodes) =>
+        currentNodes.map((currentNode) =>
+          orderById.has(currentNode.id)
+            ? ({
+                ...currentNode,
+                data: {
+                  ...currentNode.data,
+                  order: orderById.get(currentNode.id),
+                },
+              } as MindFlowNode)
+            : currentNode,
+        ),
+      );
+    },
+    [setNodes],
+  );
+
+  const getSafeFloatingPosition = useCallback((clientX: number, clientY: number, boxWidth: number, boxHeight: number) => {
+    const wrapperRect = reactFlowWrapper.current?.getBoundingClientRect();
+    const baseX = wrapperRect ? clientX - wrapperRect.left + 18 : clientX + 18;
+    const baseY = wrapperRect ? clientY - wrapperRect.top + 18 : clientY + 18;
+    return {
+      x: wrapperRect ? Math.min(Math.max(16, baseX), Math.max(16, wrapperRect.width - boxWidth - 16)) : baseX,
+      y: wrapperRect ? Math.min(Math.max(16, baseY), Math.max(16, wrapperRect.height - boxHeight - 16)) : baseY,
+    };
+  }, []);
+
+  const clearPendingConnection = useCallback(() => {
+    connectionActiveRef.current = false;
+    if (connectHoldTimeoutRef.current !== null) {
+      window.clearTimeout(connectHoldTimeoutRef.current);
+      connectHoldTimeoutRef.current = null;
+    }
+    setPendingConnection(null);
+  }, []);
+
+  const createIdeaFromPendingConnection = useCallback(
+    (connectionState: PendingConnectionState, clientX: number, clientY: number) => {
+      const store = useFlowStore.getState();
+      const currentNodes = store.nodes as MindFlowNode[];
+      const currentEdges = store.edges as MindFlowEdge[];
+      const originNode = currentNodes.find((node) => node.id === connectionState.nodeId);
+      if (!originNode) return;
+
+      const flowPosition = screenToFlowPosition({ x: clientX, y: clientY });
+      const basePosition = {
+        x: flowPosition.x - 68,
+        y: flowPosition.y - 28,
+      };
+      const position = resolveNodeCollision({
+        basePosition,
+        nodeType: 'idea',
+        nodes: currentNodes,
+      });
+
+      const newNodeId = uuidv4();
+      const sourceColor = typeof originNode.data.color === 'string' && originNode.data.color.trim().length > 0
+        ? originNode.data.color
+        : getNextRootIdeaColor(currentNodes, currentEdges);
+      const newNode: MindFlowNode = {
+        id: newNodeId,
+        type: 'idea',
+        position,
+        selected: true,
+        data: {
+          label: 'Nova Ideia',
+          color: sourceColor,
+        },
+      };
+
+      const originSize = getNodeSize(originNode);
+      const originCenter = {
+        x: originNode.position.x + originSize.width / 2,
+        y: originNode.position.y + originSize.height / 2,
+      };
+      const dx = flowPosition.x - originCenter.x;
+      const dy = flowPosition.y - originCenter.y;
+      const inferredSide =
+        Math.abs(dx) > Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top';
+      const originSide = normalizeHandleSide(connectionState.handleId, inferredSide);
+      const newNodeSide = getOppositeSide(originSide);
+
+      const newEdge: MindFlowEdge = {
+        id: `e-${connectionState.handleType === 'source' ? connectionState.nodeId : newNodeId}-${connectionState.handleType === 'source' ? newNodeId : connectionState.nodeId}-${uuidv4()}`,
+        source: connectionState.handleType === 'source' ? connectionState.nodeId : newNodeId,
+        sourceHandle: connectionState.handleType === 'source' ? originSide : newNodeSide,
+        target: connectionState.handleType === 'source' ? newNodeId : connectionState.nodeId,
+        targetHandle: connectionState.handleType === 'source' ? newNodeSide : originSide,
+        type: 'animated',
+      };
+
+      store.pushHistory();
+      store.setSaveStatus('unsaved');
+      store.setNodes([
+        ...currentNodes.map((node) => ({ ...node, selected: false }) as MindFlowNode),
+        newNode,
+      ]);
+      store.setEdges([
+        ...currentEdges.map((edge) => ({ ...edge, selected: false }) as MindFlowEdge),
+        newEdge,
+      ]);
+
+      requestAnimationFrame(() => {
+        useFlowStore.getState().autoLayout();
+      });
+    },
+    [screenToFlowPosition],
+  );
+
+  const handleGlobalConnectionPointerMove = useCallback((event: MouseEvent | TouchEvent) => {
+    const point = getEventClientPoint(event);
+    if (!point) return;
+    setPendingConnection((current) => (current ? { ...current, clientX: point.x, clientY: point.y } : current));
+  }, []);
+
+  useEffect(() => {
+    if (!pendingConnection) return;
+    window.addEventListener('mousemove', handleGlobalConnectionPointerMove);
+    window.addEventListener('touchmove', handleGlobalConnectionPointerMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalConnectionPointerMove);
+      window.removeEventListener('touchmove', handleGlobalConnectionPointerMove);
+    };
+  }, [handleGlobalConnectionPointerMove, pendingConnection]);
+
+  useEffect(() => () => clearPendingConnection(), [clearPendingConnection]);
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     if (presentationMode) return;
     event.preventDefault();
@@ -203,7 +399,15 @@ const FlowCanvasInner = () => {
           ...(type === 'note' ? { noteVariant: 'sticky', notePriority: 'medium', noteChecklist: '', notePinned: false } : {}),
           ...(type === 'group' ? { groupVariant: 'glass', groupPadding: 24, groupWidth: 420, groupHeight: 280 } : {}),
           ...(type === 'image'
-            ? { imageFit: 'cover', imageFrame: 'rounded', imageFilter: 'none', imageCaptionAlign: 'center', imageShowDomain: true }
+            ? {
+                imageFit: 'contain',
+                imageFrame: 'rounded',
+                imageFilter: 'none',
+                imageCaptionAlign: 'center',
+                imageShowDomain: true,
+                width: 248,
+                height: 220,
+              }
             : {}),
         },
       };
@@ -363,16 +567,24 @@ const FlowCanvasInner = () => {
 
         const edgesToKeep = liveEdges.filter((edge) => edge.target !== node.id);
         const existingEdge = liveEdges.find((edge) => edge.target === node.id);
+        const previousParentId = existingEdge?.source || null;
         const parentChanged = !existingEdge || existingEdge.source !== closestNode.id;
 
         if (parentChanged) {
           store.pushHistory();
           store.setEdges([...edgesToKeep, newEdge]);
           store.setSaveStatus('unsaved');
+          persistIdeaSiblingOrder(previousParentId, typedCurrentNodes, edgesToKeep);
+          persistIdeaSiblingOrder(closestNode.id, typedCurrentNodes, [...edgesToKeep, newEdge]);
+        } else {
+          persistIdeaSiblingOrder(closestNode.id, typedCurrentNodes, liveEdges);
         }
 
         // Always auto-layout when dropped on a target (re-parent or same parent)
         shouldAutoLayout = true;
+      } else if (draggedType === 'idea') {
+        const existingParentId = liveEdges.find((edge) => edge.target === node.id)?.source || null;
+        persistIdeaSiblingOrder(existingParentId, typedCurrentNodes, liveEdges);
       }
 
       setDragState(null, null);
@@ -383,13 +595,14 @@ const FlowCanvasInner = () => {
         });
       }
     },
-    [dropTargetId, findDropTarget, setDragState],
+    [dropTargetId, findDropTarget, persistIdeaSiblingOrder, setDragState],
   );
 
   const onNodeDragStart = useCallback(
     (event: React.MouseEvent, node: Node) => {
       setNodeContextMenu(null);
       setEdgeContextMenu(null);
+      setPaneContextMenu(null);
       pushHistory();
       setDragState(node.id, null);
       setAlignmentGuides({ x: null, y: null });
@@ -467,6 +680,7 @@ const FlowCanvasInner = () => {
   const handlePaneClick = useCallback(() => {
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
+    setPaneContextMenu(null);
     setShowStylePanel(false);
   }, [setShowStylePanel]);
 
@@ -486,7 +700,8 @@ const FlowCanvasInner = () => {
       event.preventDefault();
       event.stopPropagation();
 
-      const { x: safeX, y: safeY } = getSafeContextMenuPosition(event.clientX, event.clientY, 208, 152);
+      const menuHeight = (node as MindFlowNode).type === 'idea' ? 282 : 192;
+      const { x: safeX, y: safeY } = getSafeContextMenuPosition(event.clientX, event.clientY, 208, menuHeight);
 
       setNodes((currentNodes) =>
         currentNodes.map((item) => ({
@@ -497,6 +712,7 @@ const FlowCanvasInner = () => {
       setEdges((currentEdges) => currentEdges.map((edge) => ({ ...edge, selected: false }) as MindFlowEdge));
 
       setEdgeContextMenu(null);
+      setPaneContextMenu(null);
       setNodeContextMenu({
         nodeId: node.id,
         x: safeX,
@@ -509,7 +725,27 @@ const FlowCanvasInner = () => {
   const handleNodeClick = useCallback(() => {
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
+    setPaneContextMenu(null);
   }, []);
+
+  const handlePaneContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      if (presentationMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const { x: safeX, y: safeY } = getSafeContextMenuPosition(event.clientX, event.clientY, 212, 82);
+      setNodeContextMenu(null);
+      setEdgeContextMenu(null);
+      setPaneContextMenu({
+        x: safeX,
+        y: safeY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    },
+    [getSafeContextMenuPosition, presentationMode],
+  );
 
   const handleEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: MindFlowEdge) => {
@@ -528,6 +764,7 @@ const FlowCanvasInner = () => {
       );
 
       setNodeContextMenu(null);
+      setPaneContextMenu(null);
       setEdgeContextMenu({
         nodeId: edge.id,
         x: safeX,
@@ -582,6 +819,55 @@ const FlowCanvasInner = () => {
     setNodeContextMenu(null);
   }, [contextMenuNode, deleteElements]);
 
+  const handleCopyNode = useCallback(() => {
+    if (!contextMenuNode) return;
+    setCopiedNodeSnapshot(contextMenuNode);
+    setNodeContextMenu(null);
+  }, [contextMenuNode]);
+
+  const handlePasteNode = useCallback(
+    (clientX: number, clientY: number) => {
+      const copiedNode = getCopiedNodeSnapshot();
+      if (!copiedNode) return;
+      const flowPosition = screenToFlowPosition({ x: clientX, y: clientY });
+      const position = resolveNodeCollision({
+        basePosition: flowPosition,
+        nodeType: copiedNode.type as NodeType,
+        nodes: getNodes() as MindFlowNode[],
+      });
+      const pastedNode = createPastedNode(copiedNode, position);
+      addNode(pastedNode);
+      setNodes((currentNodes) =>
+        currentNodes.map((currentNode) =>
+          currentNode.id === pastedNode.id
+            ? ({ ...currentNode, selected: true } as MindFlowNode)
+            : ({ ...currentNode, selected: false } as MindFlowNode),
+        ),
+      );
+    },
+    [addNode, getNodes, screenToFlowPosition, setNodes],
+  );
+
+  const handlePasteNodeFromPane = useCallback(() => {
+    if (!paneContextMenu) return;
+    handlePasteNode(paneContextMenu.clientX, paneContextMenu.clientY);
+    setPaneContextMenu(null);
+  }, [handlePasteNode, paneContextMenu]);
+
+  const handleToggleIdeaTextFormat = useCallback(
+    (key: 'textBold' | 'textItalic' | 'textUnderline' | 'textStrike') => {
+      if (!contextMenuNode || contextMenuNode.type !== 'idea') return;
+      updateNodeData(
+        contextMenuNode.id,
+        {
+          [key]: !Boolean(contextMenuNode.data[key]),
+        },
+        false,
+      );
+    },
+    [contextMenuNode, updateNodeData],
+  );
+
   const handleDeleteEdge = useCallback(() => {
     if (!contextMenuEdge) return;
     deleteElements([], [contextMenuEdge]);
@@ -607,6 +893,7 @@ const FlowCanvasInner = () => {
     () =>
       edges.map((edge) => ({
         ...edge,
+        animated: false,
         className: [
           edge.className,
           focusNodeIds && focusNodeIds.has(edge.source) && focusNodeIds.has(edge.target) ? 'mf-edge-focus-active' : '',
@@ -617,6 +904,83 @@ const FlowCanvasInner = () => {
       })),
     [edges, focusNodeIds],
   );
+
+  const handleConnectStart = useCallback(
+    (event: MouseEvent | TouchEvent, params: { nodeId?: string | null; handleId?: string | null; handleType?: 'source' | 'target' | null }) => {
+      if (presentationMode || !params.nodeId || !params.handleType) return;
+      const point = getEventClientPoint(event);
+      if (!point) return;
+
+      connectionActiveRef.current = true;
+      didConnectRef.current = false;
+      if (connectHoldTimeoutRef.current !== null) {
+        window.clearTimeout(connectHoldTimeoutRef.current);
+      }
+
+      setPendingConnection({
+        nodeId: params.nodeId,
+        handleId: params.handleId || null,
+        handleType: params.handleType,
+        clientX: point.x,
+        clientY: point.y,
+        ready: false,
+        boxX: null,
+        boxY: null,
+      });
+
+      connectHoldTimeoutRef.current = window.setTimeout(() => {
+        if (!connectionActiveRef.current) return;
+        setPendingConnection((current) => {
+          if (!current) return current;
+          const position = getSafeFloatingPosition(current.clientX, current.clientY, QUICK_CREATE_WIDTH, QUICK_CREATE_HEIGHT);
+          return {
+            ...current,
+            ready: true,
+            boxX: position.x,
+            boxY: position.y,
+          };
+        });
+      }, QUICK_CREATE_HOLD_MS);
+    },
+    [getSafeFloatingPosition, presentationMode],
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      didConnectRef.current = true;
+      clearPendingConnection();
+      onConnect(connection);
+    },
+    [clearPendingConnection, onConnect],
+  );
+
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      const point = getEventClientPoint(event);
+      const shouldQuickCreate =
+        !didConnectRef.current &&
+        !!pendingConnection?.ready &&
+        !!point &&
+        !!quickCreateRef.current &&
+        (() => {
+          const rect = quickCreateRef.current?.getBoundingClientRect();
+          if (!rect || !point) return false;
+          return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+        })();
+
+      if (shouldQuickCreate && pendingConnection && point) {
+        createIdeaFromPendingConnection(pendingConnection, point.x, point.y);
+      }
+
+      clearPendingConnection();
+    },
+    [clearPendingConnection, createIdeaFromPendingConnection, pendingConnection],
+  );
+
+  const quickCreatePosition = useMemo(() => {
+    if (!pendingConnection?.ready || pendingConnection.boxX === null || pendingConnection.boxY === null) return null;
+    return { x: pendingConnection.boxX, y: pendingConnection.boxY };
+  }, [pendingConnection]);
 
   return (
     <div
@@ -631,7 +995,9 @@ const FlowCanvasInner = () => {
         edges={edgesWithFocusState}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onConnect={handleConnect}
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
         onReconnect={onReconnect}
         onInit={setRfInstance}
         onDrop={onDrop}
@@ -642,6 +1008,7 @@ const FlowCanvasInner = () => {
         onNodeDoubleClick={() => useFlowStore.getState().setShowStylePanel(true)}
         onNodeClick={handleNodeClick}
         onNodeContextMenu={handleNodeContextMenu}
+        onPaneContextMenu={handlePaneContextMenu}
         onEdgeClick={handleEdgeClick}
         onEdgeContextMenu={handleEdgeContextMenu}
         nodeTypes={nodeTypes}
@@ -732,6 +1099,21 @@ const FlowCanvasInner = () => {
           </Panel>
         )}
       </ReactFlow>
+      {quickCreatePosition && pendingConnection?.ready && (
+        <div
+          ref={quickCreateRef}
+          className="pointer-events-none absolute z-[75] flex items-center gap-2 rounded-xl border border-white/55 bg-white/68 px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-white/10 dark:bg-slate-900/62 dark:shadow-[0_18px_40px_rgba(2,6,23,0.3)]"
+          style={{ left: quickCreatePosition.x, top: quickCreatePosition.y }}
+        >
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-sm dark:bg-white/90 dark:text-slate-900">
+            <Plus size={13} />
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Nova ideia</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">Solte a conexão aqui</span>
+          </div>
+        </div>
+      )}
       {nodeContextMenu && contextMenuNode && (
         <div
           className="absolute z-[70] min-w-[208px] overflow-hidden rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
@@ -754,6 +1136,51 @@ const FlowCanvasInner = () => {
               Abrir propriedades
             </button>
             <button
+              onClick={handleCopyNode}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Copy size={14} />
+              Copiar
+            </button>
+            {contextMenuNode.type === 'idea' && (
+              <div className="rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                <div className="px-1 pb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  Texto
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    { key: 'textBold', label: 'Negrito', icon: Bold },
+                    { key: 'textItalic', label: 'Itálico', icon: Italic },
+                    { key: 'textUnderline', label: 'Sublinhado', icon: Underline },
+                    { key: 'textStrike', label: 'Riscado', icon: Strikethrough },
+                  ].map((format) => {
+                    const Icon = format.icon;
+                    const isActive = Boolean(contextMenuNode.data[format.key as 'textBold' | 'textItalic' | 'textUnderline' | 'textStrike']);
+
+                    return (
+                      <button
+                        key={format.key}
+                        onClick={() =>
+                          handleToggleIdeaTextFormat(
+                            format.key as 'textBold' | 'textItalic' | 'textUnderline' | 'textStrike',
+                          )
+                        }
+                        className={`flex items-center justify-center rounded-md px-2 py-2 transition-colors ${
+                          isActive
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                        title={format.label}
+                        aria-label={format.label}
+                      >
+                        <Icon size={14} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <button
               onClick={handleDisconnectNode}
               className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
@@ -766,6 +1193,26 @@ const FlowCanvasInner = () => {
             >
               <Trash2 size={14} />
               Excluir
+            </button>
+          </div>
+        </div>
+      )}
+      {paneContextMenu && (
+        <div
+          className="absolute z-[70] min-w-[212px] overflow-hidden rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+          style={{ left: paneContextMenu.x, top: paneContextMenu.y }}
+        >
+          <div className="border-b border-slate-200 px-2.5 pb-2 pt-1 text-[10px] uppercase tracking-[0.12em] text-slate-400 dark:border-slate-700">
+            Canvas
+          </div>
+          <div className="mt-1 flex flex-col gap-1">
+            <button
+              onClick={handlePasteNodeFromPane}
+              disabled={!getCopiedNodeSnapshot()}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <ClipboardPaste size={14} />
+              Colar
             </button>
           </div>
         </div>

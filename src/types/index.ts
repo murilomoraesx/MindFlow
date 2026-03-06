@@ -5,6 +5,7 @@ export type JourneyStage = 'aquisicao' | 'ativacao' | 'conversao' | 'retencao';
 export type CanvasTheme = 'elegante' | 'moderno' | 'tech' | 'retro' | 'neon' | 'cosmos' | 'terminal' | 'ember';
 export type LayoutType = 'mindmap' | 'orgchart' | 'list';
 export type EdgeAnimationStyle = 'energy' | 'subtle' | 'tech';
+export type EdgeAnimationDirection = 'forward' | 'reverse';
 
 export interface FunnelStage {
   id: string;
@@ -25,6 +26,7 @@ export interface EdgeData extends Record<string, unknown> {
   thickness?: string;
   variant?: 'solid' | 'dashed' | 'glow';
   animationStyle?: EdgeAnimationStyle;
+  animationDirection?: EdgeAnimationDirection;
 }
 
 export interface NodeComment {
@@ -38,6 +40,10 @@ export interface NodeData extends Record<string, unknown> {
   label: string;
   description?: string;
   color?: string;
+  textBold?: boolean;
+  textItalic?: boolean;
+  textUnderline?: boolean;
+  textStrike?: boolean;
   badge?: string;
   width?: number;
   height?: number;

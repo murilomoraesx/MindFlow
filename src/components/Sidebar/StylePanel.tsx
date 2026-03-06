@@ -3,8 +3,9 @@ import { useFlowStore } from '../../store/useFlowStore';
 import { useReactFlow } from '@xyflow/react';
 import { Settings2, Trash2, Copy, Plus, Unlink2, MessageSquarePlus, CheckCircle2, Circle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { EdgeAnimationStyle, FunnelStage, MindFlowNode, MindFlowEdge, JourneyStage, NodeType, NodeComment } from '../../types';
+import { EdgeAnimationDirection, EdgeAnimationStyle, FunnelStage, MindFlowNode, MindFlowEdge, JourneyStage, NodeType, NodeComment } from '../../types';
 import { buildStagesFromTemplate, calculateFunnelStages, createDefaultStage, FUNNEL_TEMPLATES, getFunnelSummary } from '../../utils/funnel';
+import { SHARED_COLOR_PALETTE } from '../../utils/colors';
 import { resolveNodeCollision } from '../../utils/nodeLayout';
 import { captureNodesIntoGroup, fitGroupToChildren, releaseGroupChildren } from '../../utils/grouping';
 
@@ -276,11 +277,12 @@ export const StylePanel = () => {
   const funnelSummary = isFunnelNode ? getFunnelSummary(funnelStages, startingTraffic) : null;
   const noteVariant = ((targetData.noteVariant as 'glass' | 'sticky' | 'outline') || 'glass') as 'glass' | 'sticky' | 'outline';
   const notePriority = ((targetData.notePriority as 'low' | 'medium' | 'high') || 'medium') as 'low' | 'medium' | 'high';
-  const imageFit = ((targetData.imageFit as 'cover' | 'contain') || 'cover') as 'cover' | 'contain';
+  const imageFit = ((targetData.imageFit as 'cover' | 'contain') || 'contain') as 'cover' | 'contain';
   const imageFrame = ((targetData.imageFrame as 'rounded' | 'polaroid' | 'circle') || 'rounded') as 'rounded' | 'polaroid' | 'circle';
   const imageFilter = ((targetData.imageFilter as 'none' | 'mono' | 'warm' | 'cool') || 'none') as 'none' | 'mono' | 'warm' | 'cool';
   const imageCaptionAlign = ((targetData.imageCaptionAlign as 'left' | 'center' | 'right') || 'center') as 'left' | 'center' | 'right';
   const edgeAnimationStyle = ((targetData.animationStyle as EdgeAnimationStyle | undefined) || settings.edgeAnimationStyle || 'energy') as EdgeAnimationStyle;
+  const edgeAnimationDirection = ((targetData.animationDirection as EdgeAnimationDirection | undefined) || 'forward') as EdgeAnimationDirection;
   const groupVariant = ((targetData.groupVariant as 'glass' | 'solid' | 'outline') || 'glass') as 'glass' | 'solid' | 'outline';
   const groupPadding = Math.max(12, Math.min(120, Number(targetData.groupPadding || 24)));
   const groupWidth = Math.max(260, Math.min(1800, Number(targetData.groupWidth || 420)));
@@ -436,25 +438,22 @@ export const StylePanel = () => {
             </>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Cor</label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                '#64748b', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6',
-                '#d946ef', '#f43f5e', '#ffffff', '#0f172a', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
-              ].map((color) => (
-                <button
-                  key={color}
-                  onClick={() => (isEdge ? updateEdgeData(targetId!, { color }) : updateNodeData(targetId!, { color }))}
-                  className={`h-5 w-5 rounded-full border-2 transition-transform hover:scale-110 ${
-                    targetData.color === color ? 'border-slate-900 dark:border-white' : 'border-transparent shadow-sm'
-                  }`}
-                  style={{ backgroundColor: color }}
-                  title="Alterar cor"
-                />
-              ))}
-            </div>
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Cor</label>
+                <div className="flex flex-wrap gap-2">
+                  {SHARED_COLOR_PALETTE.map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => (isEdge ? updateEdgeData(targetId!, { color }) : updateNodeData(targetId!, { color }))}
+                      className={`h-5 w-5 rounded-full border-2 transition-transform hover:scale-110 ${
+                        targetData.color === color ? 'border-slate-900 dark:border-white' : 'border-transparent shadow-sm'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      title="Alterar cor"
+                    />
+                  ))}
+                </div>
+              </div>
 
           {isEdge && (
             <>
@@ -528,6 +527,28 @@ export const StylePanel = () => {
                 <p className="text-[10px] leading-4 text-slate-400">
                   O play global das linhas fica na barra superior.
                 </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Direção da animação</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'forward', label: 'Esq → Dir' },
+                    { value: 'reverse', label: 'Inverter' },
+                  ].map((direction) => (
+                    <button
+                      key={direction.value}
+                      onClick={() => updateEdgeData(targetId!, { animationDirection: direction.value })}
+                      className={`rounded border py-1 text-xs font-medium transition-colors ${
+                        edgeAnimationDirection === direction.value
+                          ? 'border-pink-500 bg-pink-500/10 text-pink-600 dark:text-pink-400'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {direction.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </>
           )}
