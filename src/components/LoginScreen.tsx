@@ -1,18 +1,24 @@
 import { type FormEvent, useState } from 'react';
 import { LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
-import { authenticateMindflow, AUTH_LOGIN_EMAIL } from '../utils/auth';
+import { authenticateMindflow, isMindflowAuthConfigured } from '../utils/auth';
 
 type LoginScreenProps = {
   onSuccess: () => void;
 };
 
 export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
-  const [email, setEmail] = useState(AUTH_LOGIN_EMAIL);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const authConfigured = isMindflowAuthConfigured();
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!authConfigured) {
+      setError('Login não configurado neste ambiente.');
+      return;
+    }
 
     const authenticated = authenticateMindflow(email, password);
     if (!authenticated) {
@@ -54,7 +60,7 @@ export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
-                placeholder="redacted@example.com"
+                placeholder="seuemail@empresa.com"
               />
             </div>
           </label>
@@ -73,6 +79,12 @@ export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
             </div>
           </label>
         </div>
+
+        {!authConfigured && (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+            Configure `VITE_AUTH_EMAIL` e `VITE_AUTH_PASSWORD` no ambiente local. Para produção, o ideal é mover isso para um backend.
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">

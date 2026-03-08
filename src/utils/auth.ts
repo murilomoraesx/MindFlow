@@ -1,10 +1,15 @@
 const AUTH_SESSION_STORAGE_KEY = 'mindflow_auth_session';
 
-export const AUTH_LOGIN_EMAIL = 'redacted@example.com';
-export const AUTH_LOGIN_PASSWORD = 'REMOVED_SECRET';
+const AUTH_LOGIN_EMAIL = String(import.meta.env.VITE_AUTH_EMAIL || '')
+  .trim()
+  .toLowerCase();
+const AUTH_LOGIN_PASSWORD = String(import.meta.env.VITE_AUTH_PASSWORD || '').trim();
+
+export const isMindflowAuthConfigured = () => Boolean(AUTH_LOGIN_EMAIL && AUTH_LOGIN_PASSWORD);
 
 export const isMindflowAuthenticated = () => {
   if (typeof window === 'undefined') return false;
+  if (!isMindflowAuthConfigured()) return false;
 
   try {
     const raw = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
@@ -18,6 +23,7 @@ export const isMindflowAuthenticated = () => {
 
 export const authenticateMindflow = (email: string, password: string) => {
   if (typeof window === 'undefined') return false;
+  if (!isMindflowAuthConfigured()) return false;
 
   const normalizedEmail = email.trim().toLowerCase();
   if (normalizedEmail !== AUTH_LOGIN_EMAIL || password !== AUTH_LOGIN_PASSWORD) {
