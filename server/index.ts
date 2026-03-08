@@ -363,7 +363,7 @@ const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 import fs from 'node:fs';
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
-  app.get('*', (_req, res) => {
+  app.get('{*path}', (_req, res) => {
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
