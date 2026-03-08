@@ -2,12 +2,23 @@ services:
   mindflow:
     build: .
     restart: always
-    ports:
-      - "3003:3003"
     env_file:
       - .env
     volumes:
       - mindflow-data:/root/.mindflow-data
+    networks:
+      - easypanel
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mindflow.rule=Host(`mindflow.murilomoraes.com`)"
+      - "traefik.http.routers.mindflow.entrypoints=websecure"
+      - "traefik.http.routers.mindflow.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mindflow.loadbalancer.server.port=3003"
 
 volumes:
   mindflow-data:
+
+networks:
+  easypanel:
+    external: true
