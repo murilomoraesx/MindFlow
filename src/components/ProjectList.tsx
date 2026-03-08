@@ -5,10 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { ProjectFolder, RecentMap } from '../types';
 import { MapTemplateId, createMapFromTemplate, normalizeMapData } from '../utils/mapSchema';
 import { downloadTextFile, exportMapToMarkdown, parseMarkdownToMap } from '../utils/mapExchange';
-import { deleteStoredMapData, loadMapDataWithRecovery, persistMapData } from '../utils/persistence';
-
-const PROJECTS_STORAGE_KEY = 'mindflow_projects';
-const RECENT_MAPS_STORAGE_KEY = 'mindflow_recent_maps';
+import { persistMapData } from '../utils/persistence';
+import { apiCreateMap, apiCreateProject, apiDeleteMap, apiDeleteProject, apiGetMap, apiListMaps, apiListProjects, apiUpdateProject } from '../utils/serverApi';
+import { AccountMenu } from './AccountMenu';
 
 type TemplateOption = {
   id: MapTemplateId;
@@ -56,44 +55,6 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
   },
 ];
 
-const parseRecentMaps = (raw: string | null): RecentMap[] => {
-  try {
-    const parsed = JSON.parse(raw || '[]');
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((item) => item && typeof item.id === 'string')
-      .map((item) => ({
-        id: String(item.id),
-        name: typeof item.name === 'string' && item.name.trim() ? item.name : 'Mapa sem nome',
-        lastEdited: typeof item.lastEdited === 'number' ? item.lastEdited : Date.now(),
-        nodeCount: typeof item.nodeCount === 'number' ? item.nodeCount : 0,
-        projectId: typeof item.projectId === 'string' && item.projectId.trim() ? item.projectId : undefined,
-      }));
-  } catch {
-    return [];
-  }
-};
-
-const parseProjects = (raw: string | null): ProjectFolder[] => {
-  try {
-    const parsed = JSON.parse(raw || '[]');
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((item) => item && typeof item.id === 'string')
-      .map((item) => ({
-        id: String(item.id),
-        name: typeof item.name === 'string' && item.name.trim() ? item.name : 'Novo Projeto',
-        description: typeof item.description === 'string' ? item.description : '',
-        createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-        lastEdited: typeof item.lastEdited === 'number' ? item.lastEdited : Date.now(),
-      }));
-  } catch {
-    return [];
-  }
-};
-
 export const ProjectList = () => {
   const [projects, setProjects] = useState<ProjectFolder[]>([]);
   const [recentMaps, setRecentMaps] = useState<RecentMap[]>([]);
@@ -113,48 +74,23 @@ export const ProjectList = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
-  const { theme, setTheme, setCurrentView, loadMap, mapProjectId } = useFlowStore();
+  const { theme, setTheme, setCurrentView, setEditorReturnView, loadMap, mapProjectId } = useFlowStore();
 
   useEffect(() => {
-    const storedMaps = parseRecentMaps(localStorage.getItem(RECENT_MAPS_STORAGE_KEY));
-    const storedProjects = parseProjects(localStorage.getItem(PROJECTS_STORAGE_KEY));
-
-    let normalizedProjects = [...storedProjects];
-    let normalizedMaps = [...storedMaps];
-
-    if (normalizedProjects.length === 0 && normalizedMaps.length > 0) {
-      const defaultProjectId = uuidv4();
-      const now = Date.now();
-      normalizedProjects = [{ id: defaultProjectId, name: 'Projeto Principal', createdAt: now, lastEdited: now }];
-      normalizedMaps = normalizedMaps.map((map) => ({ ...map, projectId: defaultProjectId }));
-    }
-
-    const fallbackProjectId = normalizedProjects[0]?.id;
-    if (fallbackProjectId) {
-      normalizedMaps = normalizedMaps.map((map) => ({
-        ...map,
-        projectId: map.projectId || fallbackProjectId,
-      }));
-    }
-
-    normalizedProjects = normalizedProjects
-      .map((project) => {
-        const newestMapEdit = normalizedMaps
-          .filter((map) => map.projectId === project.id)
-          .reduce((max, map) => Math.max(max, map.lastEdited), project.lastEdited);
-
-        return { ...project, lastEdited: newestMapEdit };
-      })
-      .sort((a, b) => b.lastEdited - a.lastEdited);
-
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(normalizedProjects));
-    localStorage.setItem(RECENT_MAPS_STORAGE_KEY, JSON.stringify(normalizedMaps));
-
-    setProjects(normalizedProjects);
-    setRecentMaps(normalizedMaps.sort((a, b) => b.lastEdited - a.lastEdited));
-    if (mapProjectId && normalizedProjects.some((project) => project.id === mapProjectId)) {
-      setActiveProjectId(mapProjectId);
-    }
+    const load = async () => {
+      try {
+        const [serverProjects, serverMaps] = await Promise.all([apiListProjects(), apiListMaps()]);
+        setProjects(serverProjects.sort((a, b) => b.lastEdited - a.lastEdited));
+        setRecentMaps(serverMaps.sort((a, b) => b.lastEdited - a.lastEdited));
+        if (mapProjectId && serverProjects.some((project) => project.id === mapProjectId)) {
+          setActiveProjectId(mapProjectId);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar projetos remotos:', error);
+        setImportError(error instanceof Error ? error.message : 'Não foi possível carregar os projetos.');
+      }
+    };
+    void load();
   }, []);
 
   useEffect(() => {
@@ -170,13 +106,11 @@ export const ProjectList = () => {
   }, [showNewMapModal]);
 
   const persistProjects = (nextProjects: ProjectFolder[]) => {
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(nextProjects));
-    setProjects(nextProjects);
+    setProjects(nextProjects.sort((a, b) => b.lastEdited - a.lastEdited));
   };
 
   const persistMaps = (nextMaps: RecentMap[]) => {
-    localStorage.setItem(RECENT_MAPS_STORAGE_KEY, JSON.stringify(nextMaps));
-    setRecentMaps(nextMaps);
+    setRecentMaps(nextMaps.sort((a, b) => b.lastEdited - a.lastEdited));
   };
 
   const upsertRecentMap = (meta: RecentMap) => {
@@ -217,37 +151,40 @@ export const ProjectList = () => {
   }, [recentMaps, activeProjectId, searchQuery]);
 
   const handleOpenMap = (id: string) => {
-    const normalized = loadMapDataWithRecovery(id);
-    if (!normalized) {
-      setImportError('Não foi possível abrir este mapa. O arquivo principal e os backups parecem inválidos.');
-      return;
-    }
-
-    const resolvedProjectId = normalized.projectId || activeProjectId || projects[0]?.id;
-    loadMap({ ...normalized, projectId: resolvedProjectId });
-    setCurrentView('editor');
-    setImportError(null);
+    const run = async () => {
+      try {
+        const normalized = await apiGetMap(id);
+        persistMapData(normalized, { forceBackup: true });
+        const resolvedProjectId = normalized.projectId || activeProjectId || projects[0]?.id;
+        loadMap({ ...normalized, projectId: resolvedProjectId });
+        setEditorReturnView('projects');
+        setCurrentView('editor');
+        setImportError(null);
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Não foi possível abrir este mapa.');
+      }
+    };
+    void run();
   };
 
   const handleCreateProject = () => {
-    const name = newProjectName.trim() || 'Novo Projeto';
-    const description = newProjectDescription.trim();
-    const now = Date.now();
-    const newProject: ProjectFolder = {
-      id: uuidv4(),
-      name,
-      description,
-      createdAt: now,
-      lastEdited: now,
+    const run = async () => {
+      try {
+        const project = await apiCreateProject({
+          name: newProjectName.trim() || 'Novo Projeto',
+          description: newProjectDescription.trim(),
+        });
+        persistProjects([project, ...projects]);
+        setActiveProjectId(project.id);
+        setShowCreateProjectModal(false);
+        setNewProjectName('');
+        setNewProjectDescription('');
+        setSearchQuery('');
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Não foi possível criar o projeto.');
+      }
     };
-
-    const nextProjects = [newProject, ...projects].sort((a, b) => b.lastEdited - a.lastEdited);
-    persistProjects(nextProjects);
-    setActiveProjectId(newProject.id);
-    setShowCreateProjectModal(false);
-    setNewProjectName('');
-    setNewProjectDescription('');
-    setSearchQuery('');
+    void run();
   };
 
   const handleStartEditProject = (project: ProjectFolder) => {
@@ -261,49 +198,52 @@ export const ProjectList = () => {
     if (!editingProjectId) return;
     const trimmedName = editProjectName.trim();
     if (!trimmedName) return;
-
-    const nextProjects = projects.map((project) =>
-      project.id === editingProjectId
-        ? {
-            ...project,
-            name: trimmedName,
-            description: editProjectDescription.trim(),
-            lastEdited: Date.now(),
-          }
-        : project,
-    );
-
-    persistProjects(nextProjects.sort((a, b) => b.lastEdited - a.lastEdited));
-    setShowEditProjectModal(false);
-    setEditingProjectId(null);
+    const run = async () => {
+      try {
+        const updated = await apiUpdateProject(editingProjectId, {
+          name: trimmedName,
+          description: editProjectDescription.trim(),
+        });
+        persistProjects(projects.map((project) => (project.id === editingProjectId ? updated : project)));
+        setShowEditProjectModal(false);
+        setEditingProjectId(null);
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Não foi possível editar o projeto.');
+      }
+    };
+    void run();
   };
 
   const handleConfirmCreateMap = () => {
     if (!activeProjectId) return;
-
-    const selectedTemplate = TEMPLATE_OPTIONS.find((option) => option.id === newMapTemplate);
-    const name = newMapName.trim() || selectedTemplate?.title || 'Novo Mapa Mental';
-    const newId = uuidv4();
-    const map = createMapFromTemplate(newMapTemplate, newId, name);
-    const mapWithProject = { ...map, projectId: activeProjectId, lastEdited: Date.now() };
-
-    persistMapData(mapWithProject, { forceBackup: true });
-
-    upsertRecentMap({
-      id: newId,
-      name,
-      lastEdited: mapWithProject.lastEdited,
-      nodeCount: mapWithProject.nodes.length,
-      projectId: activeProjectId,
-    });
-
-    touchProject(activeProjectId, mapWithProject.lastEdited);
-    setShowNewMapModal(false);
-    setNewMapName('');
-    setNewMapTemplate('blank');
-
-    loadMap(mapWithProject);
-    setCurrentView('editor');
+    const run = async () => {
+      try {
+        const selectedTemplate = TEMPLATE_OPTIONS.find((option) => option.id === newMapTemplate);
+        const name = newMapName.trim() || selectedTemplate?.title || 'Novo Mapa Mental';
+        const newId = uuidv4();
+        const map = createMapFromTemplate(newMapTemplate, newId, name);
+        const mapWithProject = { ...map, projectId: activeProjectId, lastEdited: Date.now() };
+        await apiCreateMap(mapWithProject);
+        persistMapData(mapWithProject, { forceBackup: true });
+        upsertRecentMap({
+          id: newId,
+          name,
+          lastEdited: mapWithProject.lastEdited,
+          nodeCount: mapWithProject.nodes.length,
+          projectId: activeProjectId,
+        });
+        touchProject(activeProjectId, mapWithProject.lastEdited);
+        setShowNewMapModal(false);
+        setNewMapName('');
+        setNewMapTemplate('blank');
+        loadMap(mapWithProject);
+        setEditorReturnView('projects');
+        setCurrentView('editor');
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Não foi possível criar o mapa.');
+      }
+    };
+    void run();
   };
 
   const handleDeleteMap = (event: React.MouseEvent, id: string) => {
@@ -319,101 +259,106 @@ export const ProjectList = () => {
     if (!deleteTarget) return;
 
     if (deleteTarget.type === 'project') {
-      const projectId = deleteTarget.id;
-      const mapsToRemove = recentMaps.filter((map) => map.projectId === projectId);
-      mapsToRemove.forEach((map) => deleteStoredMapData(map.id));
-
-      const nextMaps = recentMaps.filter((map) => map.projectId !== projectId);
-      const nextProjects = projects.filter((project) => project.id !== projectId);
-
-      persistMaps(nextMaps);
-      persistProjects(nextProjects);
-
-      if (activeProjectId === projectId) {
-        setActiveProjectId(null);
-      }
-
-      if (editingProjectId === projectId) {
-        setShowEditProjectModal(false);
-        setEditingProjectId(null);
-      }
-
-      setDeleteTarget(null);
+      const run = async () => {
+        try {
+          const projectId = deleteTarget.id;
+          await apiDeleteProject(projectId);
+          const nextMaps = recentMaps.filter((map) => map.projectId !== projectId);
+          const nextProjects = projects.filter((project) => project.id !== projectId);
+          persistMaps(nextMaps);
+          persistProjects(nextProjects);
+          if (activeProjectId === projectId) {
+            setActiveProjectId(null);
+          }
+          if (editingProjectId === projectId) {
+            setShowEditProjectModal(false);
+            setEditingProjectId(null);
+          }
+          setDeleteTarget(null);
+        } catch (error) {
+          setImportError(error instanceof Error ? error.message : 'Não foi possível excluir o projeto.');
+        }
+      };
+      void run();
       return;
     }
 
-    const mapToDelete = recentMaps.find((map) => map.id === deleteTarget.id);
-    deleteStoredMapData(deleteTarget.id);
-
-    const nextMaps = recentMaps.filter((map) => map.id !== deleteTarget.id);
-    persistMaps(nextMaps);
-
-    if (mapToDelete?.projectId) {
-      const latestMapDateInProject = nextMaps
-        .filter((map) => map.projectId === mapToDelete.projectId)
-        .reduce((max, map) => Math.max(max, map.lastEdited), Date.now());
-      touchProject(mapToDelete.projectId, latestMapDateInProject);
-    }
-
-    setDeleteTarget(null);
+    const run = async () => {
+      try {
+        const mapToDelete = recentMaps.find((map) => map.id === deleteTarget.id);
+        await apiDeleteMap(deleteTarget.id);
+        const nextMaps = recentMaps.filter((map) => map.id !== deleteTarget.id);
+        persistMaps(nextMaps);
+        if (mapToDelete?.projectId) {
+          const latestMapDateInProject = nextMaps
+            .filter((map) => map.projectId === mapToDelete.projectId)
+            .reduce((max, map) => Math.max(max, map.lastEdited), Date.now());
+          touchProject(mapToDelete.projectId, latestMapDateInProject);
+        }
+        setDeleteTarget(null);
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : 'Não foi possível excluir o mapa.');
+      }
+    };
+    void run();
   };
 
   const handleDuplicateMap = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const normalized = loadMapDataWithRecovery(map.id);
-    if (!normalized) {
-      setImportError('Não foi possível duplicar este mapa.');
-      return;
-    }
-
-    try {
-      const duplicatedId = uuidv4();
-      const duplicatedMap = {
-        ...normalized,
-        id: duplicatedId,
-        name: `${normalized.name} (cópia)`,
-        lastEdited: Date.now(),
-        projectId: map.projectId || activeProjectId || projects[0]?.id,
-      };
-
-      persistMapData(duplicatedMap, { forceBackup: true });
-      upsertRecentMap({
-        id: duplicatedId,
-        name: duplicatedMap.name,
-        lastEdited: duplicatedMap.lastEdited,
-        nodeCount: duplicatedMap.nodes.length,
-        projectId: duplicatedMap.projectId,
-      });
-
-      if (duplicatedMap.projectId) {
-        touchProject(duplicatedMap.projectId, duplicatedMap.lastEdited);
+    const run = async () => {
+      try {
+        const normalized = await apiGetMap(map.id);
+        const duplicatedId = uuidv4();
+        const duplicatedMap = {
+          ...normalized,
+          id: duplicatedId,
+          name: `${normalized.name} (cópia)`,
+          lastEdited: Date.now(),
+          projectId: map.projectId || activeProjectId || projects[0]?.id,
+        };
+        await apiCreateMap(duplicatedMap);
+        persistMapData(duplicatedMap, { forceBackup: true });
+        upsertRecentMap({
+          id: duplicatedId,
+          name: duplicatedMap.name,
+          lastEdited: duplicatedMap.lastEdited,
+          nodeCount: duplicatedMap.nodes.length,
+          projectId: duplicatedMap.projectId,
+        });
+        if (duplicatedMap.projectId) {
+          touchProject(duplicatedMap.projectId, duplicatedMap.lastEdited);
+        }
+        setImportError(null);
+      } catch (error) {
+        console.error('Erro ao duplicar mapa:', error);
+        setImportError('Não foi possível duplicar este mapa.');
       }
-
-      setImportError(null);
-    } catch (error) {
-      console.error('Erro ao duplicar mapa:', error);
-      setImportError('Não foi possível duplicar este mapa.');
-    }
+    };
+    void run();
   };
 
   const handleExportMapJson = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const mapData = loadMapDataWithRecovery(map.id);
-    if (!mapData) return;
-    downloadTextFile(`${map.name}.json`, JSON.stringify(mapData, null, 2), 'application/json;charset=utf-8');
+    const run = async () => {
+      const mapData = await apiGetMap(map.id);
+      downloadTextFile(`${map.name}.json`, JSON.stringify(mapData, null, 2), 'application/json;charset=utf-8');
+    };
+    void run();
   };
 
   const handleExportMapMarkdown = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const normalized = loadMapDataWithRecovery(map.id);
-    if (!normalized) return;
-    try {
-      const markdown = exportMapToMarkdown(normalized.name, normalized.nodes, normalized.edges);
-      downloadTextFile(`${map.name}.md`, markdown, 'text/markdown;charset=utf-8');
-    } catch (error) {
-      console.error('Erro ao exportar markdown:', error);
-      setImportError('Não foi possível exportar este mapa como Markdown.');
-    }
+    const run = async () => {
+      try {
+        const normalized = await apiGetMap(map.id);
+        const markdown = exportMapToMarkdown(normalized.name, normalized.nodes, normalized.edges);
+        downloadTextFile(`${map.name}.md`, markdown, 'text/markdown;charset=utf-8');
+      } catch (error) {
+        console.error('Erro ao exportar markdown:', error);
+        setImportError('Não foi possível exportar este mapa como Markdown.');
+      }
+    };
+    void run();
   };
 
   const handleImportMap = () => {
@@ -430,7 +375,7 @@ export const ProjectList = () => {
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (loadEvent) => {
+      reader.onload = async (loadEvent) => {
         try {
           const content = String(loadEvent.target?.result || '');
           const fileName = file.name.toLowerCase();
@@ -446,6 +391,7 @@ export const ProjectList = () => {
             projectId: activeProjectId,
           };
 
+          await apiCreateMap(importedMap);
           persistMapData(importedMap, { forceBackup: true });
           upsertRecentMap({
             id: newId,
@@ -692,6 +638,7 @@ export const ProjectList = () => {
             )}
           </div>
           <div className="flex gap-2">
+            <AccountMenu />
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"

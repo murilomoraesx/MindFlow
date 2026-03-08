@@ -109,6 +109,7 @@ const normalizeNodeData = (nodeType: NodeType, rawData: unknown): NodeData => {
     noteLayout: data.noteLayout === 'expanded' ? 'expanded' : 'compact',
     noteShowDescription: data.noteShowDescription !== false,
     noteShowChecklist: data.noteShowChecklist !== false,
+    noteManualCollapse: !!data.noteManualCollapse,
     imageFit: data.imageFit === 'contain' || data.imageFit === 'cover' ? data.imageFit : 'contain',
     imageFrame:
       data.imageFrame === 'polaroid' || data.imageFrame === 'circle' || data.imageFrame === 'rounded' ? data.imageFrame : 'rounded',

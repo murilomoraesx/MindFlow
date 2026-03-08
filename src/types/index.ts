@@ -69,6 +69,7 @@ export interface NodeData extends Record<string, unknown> {
   noteLayout?: 'compact' | 'expanded';
   noteShowDescription?: boolean;
   noteShowChecklist?: boolean;
+  noteManualCollapse?: boolean;
   imageFit?: 'cover' | 'contain';
   imageFrame?: 'rounded' | 'polaroid' | 'circle';
   imageFilter?: 'none' | 'mono' | 'warm' | 'cool';
@@ -91,6 +92,17 @@ export interface RecentMap {
   lastEdited: number;
   nodeCount: number;
   projectId?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'master' | 'collaborator' | 'client';
+  status: 'active' | 'revoked';
+  avatarUrl?: string;
+  createdAt: number;
+  lastLoginAt?: number;
 }
 
 export interface ProjectFolder {

@@ -1,0 +1,13 @@
+services:
+  mindflow:
+    build: .
+    restart: always
+    ports:
+      - "3003:3003"
+    env_file:
+      - .env
+    volumes:
+      - mindflow-data:/root/.mindflow-data
+
+volumes:
+  mindflow-data:

@@ -9,13 +9,19 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { StructurePanel } from './components/StructurePanel';
 import { PresentationOutlinePanel } from './components/PresentationOutlinePanel';
 import { LoginScreen } from './components/LoginScreen';
+import { AdminPanel } from './components/AdminPanel';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useFlowStore } from './store/useFlowStore';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CURRENT_SCHEMA_VERSION, DEFAULT_MAP_SETTINGS } from './utils/mapSchema';
-import { isMindflowAuthenticated } from './utils/auth';
+import { getMindflowSession } from './utils/auth';
 import { persistMapData } from './utils/persistence';
+import { apiGetMap, apiSaveMap } from './utils/serverApi';
+import type { AuthUser } from './types';
+
+const CURRENT_VIEW_STORAGE_KEY = 'mindflow_current_view';
+const LAST_OPEN_MAP_STORAGE_KEY = 'mindflow_last_open_map_id';
 
 export default function App() {
   const {
@@ -32,8 +38,12 @@ export default function App() {
     mapId,
     mapProjectId,
     settings,
+    currentUser,
+    setCurrentUser,
+    loadMap,
+    setCurrentView,
   } = useFlowStore();
-  const [isAuthenticated, setIsAuthenticated] = useState(() => isMindflowAuthenticated());
+  const [sessionState, setSessionState] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -43,12 +53,56 @@ export default function App() {
     }
   }, [theme]);
 
+  useEffect(() => {
+    let mounted = true;
+    const syncSession = async () => {
+      const user = await getMindflowSession();
+      if (!mounted) return;
+      setCurrentUser(user);
+      setSessionState(user ? 'authenticated' : 'unauthenticated');
+    };
+    void syncSession();
+    return () => {
+      mounted = false;
+    };
+  }, [setCurrentUser]);
+
+  useEffect(() => {
+    if (sessionState !== 'authenticated' || !currentUser || typeof window === 'undefined') return;
+
+    const storedView = window.sessionStorage.getItem(CURRENT_VIEW_STORAGE_KEY);
+    const lastOpenMapId = window.sessionStorage.getItem(LAST_OPEN_MAP_STORAGE_KEY);
+    if (storedView !== 'editor' || !lastOpenMapId || mapId === lastOpenMapId) return;
+
+    let cancelled = false;
+    const restoreLastMap = async () => {
+      try {
+        const map = await apiGetMap(lastOpenMapId);
+        if (cancelled) return;
+        loadMap(map);
+        setCurrentView('editor');
+      } catch (error) {
+        console.error('Falha ao restaurar o mapa aberto:', error);
+        if (!cancelled) {
+          window.sessionStorage.removeItem(LAST_OPEN_MAP_STORAGE_KEY);
+          window.sessionStorage.setItem(CURRENT_VIEW_STORAGE_KEY, 'projects');
+          setCurrentView('projects');
+        }
+      }
+    };
+
+    void restoreLastMap();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, loadMap, mapId, sessionState, setCurrentView]);
+
   // Auto-save functionality
   useEffect(() => {
     if (currentView === 'editor') {
       useFlowStore.getState().setSaveStatus('saving');
       const timeoutId = setTimeout(() => {
-        try {
+        const run = async () => {
           const mapData = {
             id: mapId,
             name: mapName,
@@ -59,38 +113,50 @@ export default function App() {
             settings: settings || DEFAULT_MAP_SETTINGS,
             projectId: mapProjectId || undefined,
           };
-          persistMapData(mapData);
-
-          const recentMaps = JSON.parse(localStorage.getItem('mindflow_recent_maps') || '[]');
-          const existingIndex = recentMaps.findIndex((m: any) => m.id === mapId);
-          const mapMeta = { id: mapId, name: mapName, lastEdited: Date.now(), nodeCount: nodes.length, projectId: mapProjectId || undefined };
-
-          if (existingIndex >= 0) {
-            recentMaps[existingIndex] = mapMeta;
-          } else {
-            recentMaps.push(mapMeta);
+          try {
+            await apiSaveMap(mapData);
+            persistMapData(mapData);
+            useFlowStore.getState().setSaveStatus('saved');
+          } catch (error) {
+            console.error('Falha ao salvar mapa remoto:', error);
+            persistMapData(mapData, { forceBackup: true });
+            useFlowStore.getState().setSaveStatus('unsaved');
           }
-
-          localStorage.setItem('mindflow_recent_maps', JSON.stringify(recentMaps));
-          useFlowStore.getState().setSaveStatus('saved');
-        } catch (error) {
-          console.error('Falha ao salvar mapa localmente:', error);
-          useFlowStore.getState().setSaveStatus('unsaved');
-        }
+        };
+        void run();
       }, 500);
 
       return () => clearTimeout(timeoutId);
     }
   }, [nodes, edges, mapName, mapId, mapProjectId, currentView, settings]);
 
-  if (!isAuthenticated) {
-    return <LoginScreen onSuccess={() => setIsAuthenticated(true)} />;
+  if (sessionState === 'loading') {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-50 text-slate-500 dark:bg-[#061223] dark:text-slate-300">
+        Verificando sessão...
+      </div>
+    );
+  }
+
+  if (sessionState === 'unauthenticated' || !currentUser) {
+    return <LoginScreen onSuccess={(user: AuthUser) => {
+      setCurrentUser(user);
+      setSessionState('authenticated');
+    }} />;
   }
 
   if (currentView === 'projects') {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#061223] dark:text-slate-100 transition-colors duration-300 selection:bg-slate-200 dark:selection:bg-slate-800">
         <ProjectList />
+      </div>
+    );
+  }
+
+  if (currentView === 'admin') {
+    return (
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#061223] dark:text-slate-100 transition-colors duration-300 selection:bg-slate-200 dark:selection:bg-slate-800">
+        <AdminPanel />
       </div>
     );
   }

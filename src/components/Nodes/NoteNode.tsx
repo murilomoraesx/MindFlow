@@ -37,6 +37,7 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [isBodyEditing, setIsBodyEditing] = useState(false);
   const [isAddingChecklistItem, setIsAddingChecklistItem] = useState(false);
+  const [liveSize, setLiveSize] = useState<{ width: number; height: number } | null>(null);
   const [draftTitle, setDraftTitle] = useState(String(data.label || 'Nova Nota'));
   const [draftDescription, setDraftDescription] = useState(String(data.description || ''));
   const [newChecklistItem, setNewChecklistItem] = useState('');
@@ -60,7 +61,11 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
     : 0;
   const baseWidth = layout === 'expanded' ? 268 : 232;
   const baseHeight = layout === 'expanded' ? 176 : 132;
-  const nodeWidth = clamp(Number(width || data.width || baseWidth), 220, 720);
+  const manualWidth = typeof data.width === 'number' ? data.width : undefined;
+  const manualHeight = typeof data.height === 'number' ? data.height : undefined;
+  const manualCollapse = !!data.noteManualCollapse;
+  const transientWidth = liveSize?.width ?? (typeof width === 'number' ? width : manualWidth ?? baseWidth);
+  const nodeWidth = clamp(Number(transientWidth), 220, 720);
 
   const checklistItems = useMemo(
     () => parseChecklistItems(String(data.noteChecklist || '')),
@@ -85,14 +90,20 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
     return checklistItems.reduce((total, item) => total + Math.max(1, Math.ceil(item.text.length / Math.max(14, approxCharsPerLine - 4))), 0);
   }, [approxCharsPerLine, checklistItems, showChecklist]);
   const shouldShowChecklistCard = showChecklist && (checklistItems.length > 0 || isAddingChecklistItem || selected);
+  const shouldShowChecklistLauncher = showChecklist && checklistItems.length === 0 && !isAddingChecklistItem;
   const autoHeight = Math.max(
     baseHeight,
-    86 +
-      (showDescription && description ? descriptionLineCount * 16 + 12 : 0) +
-      (shouldShowChecklistCard ? Math.max(56, checklistLineCount * 22 + 52) : 0) +
+    96 +
+      (showDescription ? (description ? descriptionLineCount * 16 + 12 : 58) : 0) +
+      (shouldShowChecklistLauncher ? 24 : 0) +
+      (shouldShowChecklistCard ? Math.max(88, checklistLineCount * 22 + 76) : 0) +
       (layout === 'expanded' ? 24 : 0),
   );
-  const nodeHeight = Math.max(clamp(Number(height || data.height || baseHeight), baseHeight, 960), autoHeight);
+  const resolvedAutoHeight = clamp(autoHeight, baseHeight, 960);
+  const transientHeight = liveSize?.height;
+  const resolvedHeight = transientHeight ?? (manualCollapse ? manualHeight ?? resolvedAutoHeight : Math.max(manualHeight ?? resolvedAutoHeight, resolvedAutoHeight));
+  const nodeHeight = clamp(Number(resolvedHeight), 112, 960);
+  const contentIsCollapsed = !liveSize && manualCollapse && nodeHeight < resolvedAutoHeight - 8;
 
   const parsedColor = useMemo(() => {
     const normalized = noteColor.trim();
@@ -240,24 +251,32 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
       <NodeResizer
         isVisible={selected}
         minWidth={220}
-        minHeight={baseHeight}
+        minHeight={112}
         maxWidth={720}
         maxHeight={960}
         lineClassName="!border-amber-400/40"
         handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-white !bg-amber-500 dark:!border-slate-950"
+        onResizeStart={() => {
+          setLiveSize({ width: nodeWidth, height: nodeHeight });
+        }}
+        onResize={(_, params) => {
+          setLiveSize({ width: params.width, height: params.height });
+        }}
         onResizeEnd={(_, params) => {
+          setLiveSize(null);
           updateNodeData(
             id,
             {
-              width: Math.round(params.width),
-              height: Math.round(params.height),
+              width: params.width,
+              height: params.height,
+              noteManualCollapse: params.height < resolvedAutoHeight - 8,
             },
             false,
           );
         }}
       />
       <div
-        className="relative h-full overflow-hidden rounded-[22px] px-4 pb-3 pt-3.5"
+        className="relative h-full overflow-hidden rounded-[22px] px-4 pb-4 pt-3.5"
         style={{
           ...variantStyle,
         }}
@@ -392,19 +411,26 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
       )}
 
       {shouldShowChecklistCard && (
-        <div className="relative z-10 mt-3 space-y-1.5 rounded-2xl border border-slate-200/70 bg-white/72 p-2.5 dark:border-white/10 dark:bg-slate-950/34">
+        <div
+          className="relative z-10 mt-3 space-y-1.5 rounded-[24px] border border-white/55 bg-white/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:border-white/8 dark:bg-white/[0.045]"
+          style={{
+            marginBottom: -2,
+            backdropFilter: 'blur(4px)',
+          }}
+        >
           <div className="mb-1 flex items-center justify-between gap-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Checklist</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Itens</div>
             <button
               type="button"
-              className="nodrag nopan inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/78 px-2 py-1 text-[10px] font-semibold text-slate-500 transition-colors hover:border-amber-300/70 hover:text-amber-600 dark:border-white/10 dark:bg-slate-900/48 dark:text-slate-300 dark:hover:border-amber-400/40 dark:hover:text-amber-300"
+              className="nodrag nopan inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/80 bg-white/82 text-slate-500 transition-colors hover:border-amber-300/70 hover:text-amber-600 dark:border-white/10 dark:bg-slate-900/48 dark:text-slate-300 dark:hover:border-amber-400/40 dark:hover:text-amber-300"
               onClick={(event) => {
                 event.stopPropagation();
                 setIsAddingChecklistItem(true);
               }}
+              aria-label="Adicionar item"
+              title="Adicionar item"
             >
               <Plus size={11} />
-              Novo item
             </button>
           </div>
           {checklistItems.map((item, index) => (
@@ -449,6 +475,41 @@ export const NoteNode = memo(({ id, data, selected, width, height }: NodeProps<M
             </div>
           )}
         </div>
+      )}
+
+      {shouldShowChecklistLauncher && (
+        <div className="relative z-10 mt-2 flex justify-end">
+          <button
+            type="button"
+            className="nodrag nopan inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/70 bg-white/52 text-slate-400 backdrop-blur-sm transition-colors hover:border-amber-300/70 hover:bg-white/68 hover:text-amber-600 dark:border-white/10 dark:bg-slate-900/26 dark:text-slate-400 dark:hover:border-amber-400/40 dark:hover:bg-slate-900/42 dark:hover:text-amber-300"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsAddingChecklistItem(true);
+            }}
+            aria-label="Adicionar item"
+            title="Adicionar item"
+          >
+            <Plus size={13} />
+          </button>
+        </div>
+      )}
+
+      {contentIsCollapsed && (
+        <>
+          <div className="pointer-events-none absolute inset-x-4 bottom-0 z-20 h-20 rounded-b-[20px] bg-gradient-to-t from-white/92 via-white/68 to-transparent dark:from-slate-950/88 dark:via-slate-950/46" />
+          <div className="absolute inset-x-0 bottom-3 z-30 flex justify-center">
+            <button
+              type="button"
+              className="nodrag nopan inline-flex items-center rounded-full border border-slate-200/80 bg-white/86 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] backdrop-blur-sm transition-colors hover:border-amber-300/70 hover:text-amber-700 dark:border-white/10 dark:bg-slate-900/76 dark:text-slate-200 dark:hover:border-amber-400/40 dark:hover:text-amber-300"
+              onClick={(event) => {
+                event.stopPropagation();
+                updateNodeData(id, { height: resolvedAutoHeight, noteManualCollapse: false }, false);
+              }}
+            >
+              Expandir
+            </button>
+          </div>
+        </>
       )}
 
       <Handle type="source" position={Position.Bottom} id="bottom" className={HANDLE_CLASS} />

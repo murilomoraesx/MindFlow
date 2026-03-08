@@ -1,33 +1,30 @@
 import { type FormEvent, useState } from 'react';
 import { LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
-import { authenticateMindflow, isMindflowAuthConfigured } from '../utils/auth';
+import type { AuthUser } from '../types';
+import { authenticateMindflow } from '../utils/auth';
 
 type LoginScreenProps = {
-  onSuccess: () => void;
+  onSuccess: (user: AuthUser) => void;
 };
 
 export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const authConfigured = isMindflowAuthConfigured();
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!authConfigured) {
-      setError('Login não configurado neste ambiente.');
-      return;
+    setSubmitting(true);
+    try {
+      const authenticated = await authenticateMindflow(email, password);
+      setError('');
+      onSuccess(authenticated);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Não foi possível entrar.');
+    } finally {
+      setSubmitting(false);
     }
-
-    const authenticated = authenticateMindflow(email, password);
-    if (!authenticated) {
-      setError('E-mail ou senha inválidos.');
-      return;
-    }
-
-    setError('');
-    onSuccess();
   };
 
   return (
@@ -80,12 +77,6 @@ export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
           </label>
         </div>
 
-        {!authConfigured && (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-            Configure `VITE_AUTH_EMAIL` e `VITE_AUTH_PASSWORD` no ambiente local. Para produção, o ideal é mover isso para um backend.
-          </div>
-        )}
-
         {error && (
           <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
             {error}
@@ -94,9 +85,10 @@ export const LoginScreen = ({ onSuccess }: LoginScreenProps) => {
 
         <button
           type="submit"
+          disabled={submitting}
           className="mt-6 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-transform duration-200 hover:scale-[1.01] hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
         >
-          Entrar
+          {submitting ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
     </div>

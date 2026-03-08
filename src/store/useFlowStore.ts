@@ -16,7 +16,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import dagre from 'dagre';
 import { Position } from '@xyflow/react';
-import { LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '../types';
+import { AuthUser, LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '../types';
 import { DEFAULT_EDGE_COLOR } from '../utils/colors';
 import { createBlankMap, DEFAULT_MAP_SETTINGS, normalizeMapData } from '../utils/mapSchema';
 import { snapPositionToGrid } from '../utils/nodeLayout';
@@ -28,11 +28,43 @@ import {
 
 const initialMap = createBlankMap(uuidv4(), 'Meu Mapa Mental');
 const THEME_STORAGE_KEY = 'mindflow_theme';
+const CURRENT_VIEW_STORAGE_KEY = 'mindflow_current_view';
+const LAST_OPEN_MAP_STORAGE_KEY = 'mindflow_last_open_map_id';
+const LAST_OPEN_PROJECT_STORAGE_KEY = 'mindflow_last_open_project_id';
 
 const getStoredTheme = (): 'light' | 'dark' => {
   if (typeof window === 'undefined') return 'light';
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   return stored === 'dark' ? 'dark' : 'light';
+};
+
+const getStoredCurrentView = (): 'projects' | 'editor' | 'admin' => {
+  if (typeof window === 'undefined') return 'projects';
+  const stored = window.sessionStorage.getItem(CURRENT_VIEW_STORAGE_KEY);
+  return stored === 'editor' || stored === 'admin' ? stored : 'projects';
+};
+
+const setStoredCurrentView = (view: 'projects' | 'editor' | 'admin') => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(CURRENT_VIEW_STORAGE_KEY, view);
+};
+
+const setStoredLastOpenMapId = (mapId: string | null) => {
+  if (typeof window === 'undefined') return;
+  if (mapId) {
+    window.sessionStorage.setItem(LAST_OPEN_MAP_STORAGE_KEY, mapId);
+    return;
+  }
+  window.sessionStorage.removeItem(LAST_OPEN_MAP_STORAGE_KEY);
+};
+
+const setStoredLastOpenProjectId = (projectId: string | null) => {
+  if (typeof window === 'undefined') return;
+  if (projectId) {
+    window.sessionStorage.setItem(LAST_OPEN_PROJECT_STORAGE_KEY, projectId);
+    return;
+  }
+  window.sessionStorage.removeItem(LAST_OPEN_PROJECT_STORAGE_KEY);
 };
 
 interface FlowState {
@@ -54,7 +86,9 @@ interface FlowState {
   presentationMode: boolean;
   presentationNodeIds: string[];
   presentationIndex: number;
-  currentView: 'projects' | 'editor';
+  currentView: 'projects' | 'editor' | 'admin';
+  editorReturnView: 'projects' | 'admin';
+  currentUser: AuthUser | null;
   rfInstance: ReactFlowInstance | null;
   history: { nodes: MindFlowNode[]; edges: MindFlowEdge[] }[];
   historyIndex: number;
@@ -99,7 +133,9 @@ interface FlowState {
   nextPresentationStep: () => void;
   prevPresentationStep: () => void;
   focusPresentationNode: (nodeId: string) => void;
-  setCurrentView: (view: 'projects' | 'editor') => void;
+  setCurrentView: (view: 'projects' | 'editor' | 'admin') => void;
+  setEditorReturnView: (view: 'projects' | 'admin') => void;
+  setCurrentUser: (user: AuthUser | null) => void;
   setRfInstance: (instance: ReactFlowInstance | null) => void;
   setSettings: (settings: Partial<MapSettings>) => void;
   toggleNodeCollapse: (nodeId: string) => void;
@@ -455,7 +491,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   presentationMode: false,
   presentationNodeIds: [],
   presentationIndex: 0,
-  currentView: 'projects',
+  currentView: getStoredCurrentView(),
+  editorReturnView: 'projects',
+  currentUser: null,
   rfInstance: null,
   history: [{ nodes: initialMap.nodes, edges: initialMap.edges }],
   historyIndex: 0,
@@ -676,7 +714,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     });
   },
   setMapName: (name) => set({ mapName: name }),
-  setMapProjectId: (projectId) => set({ mapProjectId: projectId }),
+  setMapProjectId: (projectId) => {
+    setStoredLastOpenProjectId(projectId);
+    set({ mapProjectId: projectId });
+  },
   setTheme: (theme) => {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
@@ -756,7 +797,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       duration: 540,
     });
   },
-  setCurrentView: (view) => set({ currentView: view }),
+  setCurrentView: (view) => {
+    setStoredCurrentView(view);
+    set({ currentView: view });
+  },
+  setEditorReturnView: (view) => set({ editorReturnView: view }),
+  setCurrentUser: (user) => set({ currentUser: user }),
   setRfInstance: (instance) => set({ rfInstance: instance }),
   setSettings: (settings) => set({ settings: { ...get().settings, ...settings } }),
 
@@ -1148,6 +1194,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   loadMap: (mapData) => {
     const normalizedMap = normalizeMapData(mapData);
     const normalizedNodes = ensureNodeCreationOrder(normalizedMap.nodes);
+    setStoredCurrentView('editor');
+    setStoredLastOpenMapId(normalizedMap.id);
+    setStoredLastOpenProjectId(normalizedMap.projectId || null);
 
     set({
       nodes: normalizedNodes,

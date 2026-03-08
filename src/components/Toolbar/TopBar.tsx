@@ -5,6 +5,7 @@ import { exportFlowToPdf } from '../../utils/export';
 import { downloadTextFile, exportMapToMarkdown } from '../../utils/mapExchange';
 import { DEFAULT_EDGE_COLOR, SHARED_COLOR_PALETTE } from '../../utils/colors';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AccountMenu } from '../AccountMenu';
 
 const CANVAS_POINTER_EVENT = 'mindflow:canvas-pointerdown';
 
@@ -12,6 +13,7 @@ export const TopBar = () => {
   const {
     mapName,
     setMapName,
+    editorReturnView,
     undo,
     redo,
     theme,
@@ -331,9 +333,9 @@ export const TopBar = () => {
     <div className="mf-toolbar relative z-50 flex h-14 w-full items-center justify-between border-b border-slate-200/80 bg-white/88 px-4 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/80 transition-colors duration-300">
       <div className="flex min-w-0 items-center gap-3">
         <button
-          onClick={() => setCurrentView('projects')}
+          onClick={() => setCurrentView(editorReturnView)}
           className="flex h-7 w-7 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          title="Voltar aos Projetos"
+          title={editorReturnView === 'admin' ? 'Voltar ao admin' : 'Voltar aos projetos'}
         >
           <ChevronLeft size={16} />
         </button>
@@ -854,6 +856,8 @@ export const TopBar = () => {
             </div>
           )}
         </div>
+
+        <AccountMenu />
       </div>
     </div>
   );
