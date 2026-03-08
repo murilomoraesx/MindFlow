@@ -4,13 +4,13 @@ import { MindFlowNode } from '../../types';
 import { cn } from '../../utils/cn';
 import { useFlowStore } from '../../store/useFlowStore';
 import { ChevronRight, ChevronLeft, MessageSquare } from 'lucide-react';
-import { getDefaultIdeaColorByDepth, IDEA_DESCENDANT_TEXT_COLOR } from '../../utils/nodeLayout';
+import { getDefaultIdeaColorByDepth, getNodeDepth, IDEA_DESCENDANT_TEXT_COLOR, isStructuralEdge } from '../../utils/nodeLayout';
 
 const IDEA_HANDLE_STYLE: React.CSSProperties = {
-  backgroundColor: 'rgba(148, 163, 184, 0.26)',
-  borderColor: 'rgba(255, 255, 255, 0.78)',
-  boxShadow: '0 4px 10px rgba(15, 23, 42, 0.12)',
-  backdropFilter: 'blur(8px)',
+  backgroundColor: 'rgba(255, 255, 255, 0.78)',
+  borderColor: 'rgba(148, 163, 184, 0.58)',
+  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.12), inset 0 0 0 1px rgba(255,255,255,0.42)',
+  backdropFilter: 'blur(10px)',
 };
 
 export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) => {
@@ -21,23 +21,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
 
   const isDropTarget = id === dropTargetId;
 
-  // Calculate generic depth
-  const getDepth = (nodeId: string): number => {
-    let depth = 0;
-    let currentId = nodeId;
-    // Safety break to prevent infinite loops in generic cyclic graphs, though dagre is DAG
-    let iterations = 0;
-    while (currentId && iterations < 100) {
-      const incomingEdge = edges.find(e => e.target === currentId);
-      if (!incomingEdge) break;
-      depth++;
-      currentId = incomingEdge.source;
-      iterations++;
-    }
-    return depth;
-  };
-
-  const depth = getDepth(id);
+  const depth = getNodeDepth(id, edges);
   const color = (data.color as string) || getDefaultIdeaColorByDepth(depth);
   const parsedColor = useMemo(() => {
     const normalized = color.trim();
@@ -92,7 +76,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
   }, [isEditing]);
 
   // Calculate if this node has children and how many descendants are hidden
-  const hasChildren = edges.some(e => e.source === id);
+  const hasChildren = edges.some((edge) => isStructuralEdge(edge) && edge.source === id);
   const isCollapsed = !!data.isCollapsed;
 
   const countHiddenDescendants = () => {
@@ -100,7 +84,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
     const currentDescendants = new Set<string>();
 
     const countRecursive = (parentId: string) => {
-      const childrenIds = edges.filter(e => e.source === parentId).map(e => e.target);
+      const childrenIds = edges.filter((edge) => isStructuralEdge(edge) && edge.source === parentId).map((edge) => edge.target);
       childrenIds.forEach(childId => {
         const childNode = nodes.find(n => n.id === childId);
         // Only count if it's not a funnel, and we haven't counted it yet
@@ -203,6 +187,20 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
     }
   }
 
+  if (depth >= 2 && selected) {
+    if (hasDescendantFrame) {
+      dynamicInlineStyles.boxShadow = `0 0 0 1.5px ${toAlpha(0.34)}, 0 12px 28px -18px ${toAlpha(0.38)}`;
+    } else {
+      nodeStyles += " rounded-full";
+      dynamicInlineStyles.background = toAlpha(theme === 'dark' ? 0.18 : 0.12);
+      dynamicInlineStyles.boxShadow = `0 0 0 1.5px ${toAlpha(0.28)}, 0 10px 24px -18px ${toAlpha(0.3)}`;
+      dynamicInlineStyles.paddingLeft = '0.85rem';
+      dynamicInlineStyles.paddingRight = '0.85rem';
+      dynamicInlineStyles.paddingTop = '0.35rem';
+      dynamicInlineStyles.paddingBottom = '0.35rem';
+    }
+  }
+
   // Visual Drag State overrides
   if (isDropTarget) {
     nodeStyles += " ring-4 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-950 scale-105 z-40";
@@ -228,17 +226,24 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
       onDoubleClick={handleDoubleClick}
     >
       <Handle
-        type="target"
+        type="source"
         position={Position.Top}
         id="top"
-        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 && "pointer-events-none opacity-0")}
+        className="h-3.5 w-3.5 rounded-full border opacity-90 transition-all duration-150 group-hover:scale-110 group-hover:opacity-100"
         style={IDEA_HANDLE_STYLE}
+      />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top-target"
+        className="pointer-events-none h-px w-px rounded-full border-0 opacity-0"
+        style={{ background: 'transparent' }}
       />
       <Handle
         type="target"
         position={Position.Left}
         id="left"
-        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 ? "-left-3" : "-left-1.5")}
+        className={cn("h-3.5 w-3.5 rounded-full border opacity-90 transition-all duration-150 group-hover:scale-110 group-hover:opacity-100", depth >= 2 ? "-left-3.5" : "-left-2")}
         style={IDEA_HANDLE_STYLE}
       />
 
@@ -347,14 +352,21 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
         type="source"
         position={Position.Bottom}
         id="bottom"
-        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 && "pointer-events-none opacity-0")}
+        className="h-3.5 w-3.5 rounded-full border opacity-90 transition-all duration-150 group-hover:scale-110 group-hover:opacity-100"
         style={IDEA_HANDLE_STYLE}
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="bottom-target"
+        className="pointer-events-none h-px w-px rounded-full border-0 opacity-0"
+        style={{ background: 'transparent' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 ? "-right-3" : "-right-1.5")}
+        className={cn("h-3.5 w-3.5 rounded-full border opacity-90 transition-all duration-150 group-hover:scale-110 group-hover:opacity-100", depth >= 2 ? "-right-3.5" : "-right-2")}
         style={IDEA_HANDLE_STYLE}
       />
     </div>

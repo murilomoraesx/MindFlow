@@ -21,6 +21,7 @@ import { NoteNode } from '../Nodes/NoteNode';
 import { ImageNode } from '../Nodes/ImageNode';
 import { AnimatedEdge } from '../Edges/AnimatedEdge';
 import { FunnelEdge } from '../Edges/FunnelEdge';
+import { ReferenceEdge } from '../Edges/ReferenceEdge';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeType, MindFlowEdge, MindFlowNode } from '../../types';
@@ -28,6 +29,7 @@ import { exportFlowToPdf } from '../../utils/export';
 import { CANVAS_GRID_SIZE, getDefaultIdeaColorByDepth, getNextRootIdeaColor, getNodeDepth, getNodeSize, isDescendant, resolveNodeCollision, snapPositionToGrid } from '../../utils/nodeLayout';
 import { captureNodesIntoGroup, fitGroupToChildren } from '../../utils/grouping';
 import { createPastedNode, getCopiedNodeSnapshot, setCopiedNodeSnapshot } from '../../utils/nodeClipboard';
+import { DEFAULT_EDGE_COLOR } from '../../utils/colors';
 
 const nodeTypes = {
   idea: IdeaNode,
@@ -40,6 +42,7 @@ const nodeTypes = {
 const edgeTypes = {
   animated: AnimatedEdge,
   funnel: FunnelEdge,
+  reference: ReferenceEdge,
 };
 
 const CANVAS_POINTER_EVENT = 'mindflow:canvas-pointerdown';
@@ -76,6 +79,11 @@ type PendingConnectionState = {
   boxY: number | null;
 };
 
+type ReferenceLinkSourceState = {
+  nodeId: string;
+  handleId: 'top' | 'bottom';
+};
+
 const QUICK_CREATE_WIDTH = 156;
 const QUICK_CREATE_HEIGHT = 46;
 const QUICK_CREATE_HOLD_MS = 420;
@@ -105,6 +113,17 @@ const getOppositeSide = (side: 'top' | 'right' | 'bottom' | 'left') => {
   if (side === 'left') return 'right';
   return 'left';
 };
+
+const normalizeReferenceHandle = (handleId: string | null | undefined): 'top' | 'bottom' | null => {
+  if (handleId === 'top' || handleId === 'top-target') return 'top';
+  if (handleId === 'bottom' || handleId === 'bottom-target') return 'bottom';
+  return null;
+};
+const isReferenceHandle = (handleId: string | null | undefined) => normalizeReferenceHandle(handleId) !== null;
+const REFERENCE_EDGE_COLOR = '#22C55E';
+const IDEA_COLOR_PRESETS = ['#2563EB', '#8B5CF6', '#EC4899', '#F59E0B', '#22C55E', '#0EA5E9', '#111827'];
+const getOppositeReferenceHandle = (handleId: 'top' | 'bottom') => (handleId === 'top' ? 'bottom' : 'top');
+const toReferenceTargetHandle = (handleId: 'top' | 'bottom') => (handleId === 'top' ? 'top-target' : 'bottom-target');
 
 const FlowCanvasInner = () => {
   const {
@@ -149,6 +168,7 @@ const FlowCanvasInner = () => {
   const [edgeContextMenu, setEdgeContextMenu] = useState<NodeContextMenuState | null>(null);
   const [paneContextMenu, setPaneContextMenu] = useState<PaneContextMenuState | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnectionState | null>(null);
+  const [referenceLinkSource, setReferenceLinkSource] = useState<ReferenceLinkSourceState | null>(null);
   const quickCreateRef = useRef<HTMLDivElement>(null);
   const connectHoldTimeoutRef = useRef<number | null>(null);
   const connectionActiveRef = useRef(false);
@@ -353,6 +373,10 @@ const FlowCanvasInner = () => {
         target: connectionState.handleType === 'source' ? newNodeId : connectionState.nodeId,
         targetHandle: connectionState.handleType === 'source' ? newNodeSide : originSide,
         type: 'animated',
+        data: {
+          color: DEFAULT_EDGE_COLOR,
+          thickness: '1',
+        },
       };
 
       const newDepth = getNodeDepth(newNodeId, [...currentEdges, newEdge]);
@@ -381,8 +405,21 @@ const FlowCanvasInner = () => {
   const handleGlobalConnectionPointerMove = useCallback((event: MouseEvent | TouchEvent) => {
     const point = getEventClientPoint(event);
     if (!point) return;
-    setPendingConnection((current) => (current ? { ...current, clientX: point.x, clientY: point.y } : current));
-  }, []);
+    setPendingConnection((current) => {
+      if (!current) return current;
+      if (!current.ready) {
+        return { ...current, clientX: point.x, clientY: point.y };
+      }
+      const position = getSafeFloatingPosition(point.x, point.y, QUICK_CREATE_WIDTH, QUICK_CREATE_HEIGHT);
+      return {
+        ...current,
+        clientX: point.x,
+        clientY: point.y,
+        boxX: position.x,
+        boxY: position.y,
+      };
+    });
+  }, [getSafeFloatingPosition]);
 
   useEffect(() => {
     if (!pendingConnection) return;
@@ -603,6 +640,10 @@ const FlowCanvasInner = () => {
           target: node.id,
           targetHandle: 'left',
           type: 'animated',
+          data: {
+            color: DEFAULT_EDGE_COLOR,
+            thickness: '1',
+          },
         };
 
         const edgesToKeep = liveEdges.filter((edge) => edge.target !== node.id);
@@ -769,6 +810,7 @@ const FlowCanvasInner = () => {
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
     setPaneContextMenu(null);
+    setReferenceLinkSource(null);
     setShowStylePanel(false);
   }, [setShowStylePanel]);
 
@@ -781,6 +823,72 @@ const FlowCanvasInner = () => {
       y: wrapperRect ? Math.min(offsetY, Math.max(16, wrapperRect.height - menuHeight - 16)) : offsetY,
     };
   }, []);
+
+  const getNodeIdFromPoint = useCallback((clientX: number, clientY: number) => {
+    if (typeof document === 'undefined') return null;
+    const elements = document.elementsFromPoint(clientX, clientY);
+    for (const element of elements) {
+      if (!(element instanceof HTMLElement)) continue;
+      const nodeElement = element.closest('.react-flow__node[data-id]') as HTMLElement | null;
+      if (!nodeElement) continue;
+      const nodeId = nodeElement.dataset.id;
+      if (nodeId) return nodeId;
+    }
+    return null;
+  }, []);
+
+  const createReferenceEdge = useCallback(
+    (
+      sourceNodeId: string,
+      sourceHandle: 'top' | 'bottom',
+      targetNodeId: string,
+      preferredTargetHandle?: string | null,
+    ) => {
+      if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) return false;
+      const store = useFlowStore.getState();
+      const hasDuplicate = store.edges.some(
+        (edge) => edge.type === 'reference' && edge.source === sourceNodeId && edge.target === targetNodeId,
+      );
+      if (hasDuplicate) return false;
+
+      const sourceNode = store.nodes.find((node) => node.id === sourceNodeId) as MindFlowNode | undefined;
+      const targetNode = store.nodes.find((node) => node.id === targetNodeId) as MindFlowNode | undefined;
+      const sourceSize = sourceNode ? getNodeSize(sourceNode) : null;
+      const targetSize = targetNode ? getNodeSize(targetNode) : null;
+      const sourceCenterY = sourceNode && sourceSize ? sourceNode.position.y + sourceSize.height / 2 : 0;
+      const targetCenterY = targetNode && targetSize ? targetNode.position.y + targetSize.height / 2 : 0;
+      const targetHandle: 'top' | 'bottom' =
+        normalizeReferenceHandle(preferredTargetHandle) ||
+        (Math.abs(sourceCenterY - targetCenterY) <= 8
+          ? getOppositeReferenceHandle(sourceHandle)
+          : targetCenterY >= sourceCenterY
+            ? 'top'
+            : 'bottom');
+
+      store.pushHistory();
+      store.setSaveStatus('unsaved');
+      store.setEdges((currentEdges) =>
+        currentEdges.concat({
+          id: `ref-${sourceNodeId}-${targetNodeId}-${uuidv4()}`,
+          source: sourceNodeId,
+          target: targetNodeId,
+          sourceHandle,
+          targetHandle: toReferenceTargetHandle(targetHandle),
+          type: 'reference',
+          reconnectable: false,
+          data: {
+            color: REFERENCE_EDGE_COLOR,
+            variant: 'dashed',
+            animationDirection: 'forward',
+            animationStyle: store.settings.edgeAnimationStyle,
+            animationEnabled: true,
+          },
+        } as MindFlowEdge),
+      );
+      return true;
+    },
+    [],
+  );
 
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -810,11 +918,19 @@ const FlowCanvasInner = () => {
     [getSafeContextMenuPosition, presentationMode, setEdges, setNodes],
   );
 
-  const handleNodeClick = useCallback(() => {
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (referenceLinkSource) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (node.id !== referenceLinkSource.nodeId) {
+        createReferenceEdge(referenceLinkSource.nodeId, referenceLinkSource.handleId, node.id);
+      }
+      setReferenceLinkSource(null);
+    }
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
     setPaneContextMenu(null);
-  }, []);
+  }, [createReferenceEdge, referenceLinkSource]);
 
   const handlePaneContextMenu = useCallback(
     (event: React.MouseEvent) => {
@@ -862,11 +978,18 @@ const FlowCanvasInner = () => {
     [getSafeContextMenuPosition, presentationMode, setEdges, setNodes],
   );
 
-  const handleEdgeClick = useCallback(() => {
+  const handleEdgeClick = useCallback((event: React.MouseEvent, edge: MindFlowEdge) => {
+    setEdges((currentEdges) =>
+      currentEdges.map((currentEdge) => ({
+        ...currentEdge,
+        selected: currentEdge.id === edge.id,
+      }) as MindFlowEdge),
+    );
+    setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, selected: false }) as MindFlowNode));
     setNodeContextMenu(null);
     setEdgeContextMenu(null);
     useFlowStore.getState().setShowStylePanel(true);
-  }, []);
+  }, [setEdges, setNodes]);
 
   const handleOpenProperties = useCallback(() => {
     if (!contextMenuNode) return;
@@ -990,6 +1113,20 @@ const FlowCanvasInner = () => {
     );
   }, [contextMenuNode, updateNodeData]);
 
+  const handleSetIdeaColor = useCallback(
+    (color: string) => {
+      if (!contextMenuNode || contextMenuNode.type !== 'idea') return;
+      updateNodeData(
+        contextMenuNode.id,
+        {
+          color,
+        },
+        false,
+      );
+    },
+    [contextMenuNode, updateNodeData],
+  );
+
   const handleDeleteEdge = useCallback(() => {
     if (!contextMenuEdge) return;
     deleteElements([], [contextMenuEdge]);
@@ -1013,17 +1150,24 @@ const FlowCanvasInner = () => {
 
   const edgesWithFocusState = useMemo(
     () =>
-      edges.map((edge) => ({
-        ...edge,
-        animated: false,
-        className: [
-          edge.className,
-          focusNodeIds && focusNodeIds.has(edge.source) && focusNodeIds.has(edge.target) ? 'mf-edge-focus-active' : '',
-          focusNodeIds && !focusNodeIds.has(edge.source) && !focusNodeIds.has(edge.target) ? 'mf-edge-muted' : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-      })),
+      [...edges]
+        .sort((a, b) => {
+          if (a.type === 'reference' && b.type !== 'reference') return -1;
+          if (a.type !== 'reference' && b.type === 'reference') return 1;
+          return 0;
+        })
+        .map((edge) => ({
+          ...edge,
+          animated: false,
+          className: [
+            edge.className,
+            edge.type === 'reference' ? 'mf-reference-edge-layer' : '',
+            focusNodeIds && focusNodeIds.has(edge.source) && focusNodeIds.has(edge.target) ? 'mf-edge-focus-active' : '',
+            focusNodeIds && !focusNodeIds.has(edge.source) && !focusNodeIds.has(edge.target) ? 'mf-edge-muted' : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        })),
     [edges, focusNodeIds],
   );
 
@@ -1035,6 +1179,7 @@ const FlowCanvasInner = () => {
 
       connectionActiveRef.current = true;
       didConnectRef.current = false;
+      setReferenceLinkSource(null);
       if (connectHoldTimeoutRef.current !== null) {
         window.clearTimeout(connectHoldTimeoutRef.current);
       }
@@ -1062,7 +1207,7 @@ const FlowCanvasInner = () => {
             boxY: position.y,
           };
         });
-      }, QUICK_CREATE_HOLD_MS);
+      }, isReferenceHandle(params.handleId) ? 40 : QUICK_CREATE_HOLD_MS);
     },
     [getSafeFloatingPosition, presentationMode],
   );
@@ -1071,14 +1216,57 @@ const FlowCanvasInner = () => {
     (connection: Connection) => {
       didConnectRef.current = true;
       clearPendingConnection();
+      if (
+        connection.source &&
+        connection.target &&
+        (isReferenceHandle(connection.sourceHandle) || isReferenceHandle(connection.targetHandle))
+      ) {
+        const originHandle = normalizeReferenceHandle(pendingConnection?.handleId);
+        if (!pendingConnection?.nodeId || !originHandle) return;
+        const sourceNodeId = pendingConnection.nodeId;
+        const targetNodeId = [connection.source, connection.target].find(
+          (candidateNodeId): candidateNodeId is string => !!candidateNodeId && candidateNodeId !== sourceNodeId,
+        ) || null;
+        if (!targetNodeId || sourceNodeId === targetNodeId) return;
+        const connectedHandle =
+          connection.source === sourceNodeId
+            ? connection.targetHandle
+            : connection.target === sourceNodeId
+              ? connection.sourceHandle
+              : null;
+        createReferenceEdge(sourceNodeId, originHandle, targetNodeId, connectedHandle);
+        return;
+      }
       onConnect(connection);
     },
-    [clearPendingConnection, onConnect],
+    [clearPendingConnection, createReferenceEdge, onConnect, pendingConnection],
   );
 
   const handleConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const point = getEventClientPoint(event);
+      const droppedNodeId =
+        point && pendingConnection && isReferenceHandle(pendingConnection.handleId)
+          ? getNodeIdFromPoint(point.x, point.y)
+          : null;
+
+      if (
+        point &&
+        pendingConnection &&
+        isReferenceHandle(pendingConnection.handleId) &&
+        droppedNodeId &&
+        droppedNodeId !== pendingConnection.nodeId
+      ) {
+        didConnectRef.current = true;
+        createReferenceEdge(
+          pendingConnection.nodeId,
+          pendingConnection.handleId as 'top' | 'bottom',
+          droppedNodeId,
+        );
+        clearPendingConnection();
+        return;
+      }
+
       const shouldQuickCreate =
         !didConnectRef.current &&
         !!pendingConnection?.ready &&
@@ -1091,12 +1279,20 @@ const FlowCanvasInner = () => {
         })();
 
       if (shouldQuickCreate && pendingConnection && point) {
-        createIdeaFromPendingConnection(pendingConnection, point.x, point.y);
+        const originHandle = normalizeReferenceHandle(pendingConnection.handleId);
+        if (originHandle) {
+          setReferenceLinkSource({
+            nodeId: pendingConnection.nodeId,
+            handleId: originHandle,
+          });
+        } else {
+          createIdeaFromPendingConnection(pendingConnection, point.x, point.y);
+        }
       }
 
       clearPendingConnection();
     },
-    [clearPendingConnection, createIdeaFromPendingConnection, pendingConnection],
+    [clearPendingConnection, createIdeaFromPendingConnection, createReferenceEdge, getNodeIdFromPoint, pendingConnection],
   );
 
   const quickCreatePosition = useMemo(() => {
@@ -1224,24 +1420,40 @@ const FlowCanvasInner = () => {
       {quickCreatePosition && pendingConnection?.ready && (
         <div
           ref={quickCreateRef}
-          className="pointer-events-none absolute z-[75] flex items-center gap-2 rounded-xl border border-white/55 bg-white/68 px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-white/10 dark:bg-slate-900/62 dark:shadow-[0_18px_40px_rgba(2,6,23,0.3)]"
+          className="pointer-events-none absolute z-[75] flex items-center gap-2 rounded-full border border-white/60 bg-white/76 px-3.5 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-white/10 dark:bg-slate-900/68 dark:shadow-[0_18px_40px_rgba(2,6,23,0.3)]"
           style={{ left: quickCreatePosition.x, top: quickCreatePosition.y }}
         >
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-sm dark:bg-white/90 dark:text-slate-900">
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full shadow-sm ${
+            isReferenceHandle(pendingConnection.handleId)
+              ? 'bg-emerald-500/90 text-white'
+              : 'bg-slate-900/85 text-white dark:bg-white/90 dark:text-slate-900'
+          }`}>
             <Plus size={13} />
           </span>
           <div className="flex flex-col">
-            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">Nova ideia</span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400">Solte a conexão aqui</span>
+            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+              {isReferenceHandle(pendingConnection.handleId) ? 'Ativar referência' : 'Nova ideia'}
+            </span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+              {isReferenceHandle(pendingConnection.handleId) ? 'Solte aqui e depois clique no nó destino' : 'Solte a conexão aqui'}
+            </span>
+          </div>
+        </div>
+      )}
+      {referenceLinkSource && (
+        <div className="pointer-events-none absolute left-1/2 top-4 z-[74] -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full border border-emerald-300/60 bg-white/90 px-4 py-2 text-[11px] font-medium text-emerald-700 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-emerald-400/20 dark:bg-slate-900/86 dark:text-emerald-300">
+            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_6px_rgba(34,197,94,0.14)]" />
+            Modo referência ativo: clique no nó de destino
           </div>
         </div>
       )}
       {nodeContextMenu && contextMenuNode && (
         <div
-          className="absolute z-[70] min-w-[208px] overflow-hidden rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+          className="absolute z-[70] min-w-[252px] overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 p-2 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95"
           style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
         >
-          <div className="border-b border-slate-200 px-2.5 pb-2 pt-1 dark:border-slate-700">
+          <div className="border-b border-slate-200 px-3 pb-2 pt-1 dark:border-slate-700">
             <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
               {String(contextMenuNode.data.label || 'Nó sem título')}
             </div>
@@ -1249,23 +1461,23 @@ const FlowCanvasInner = () => {
               {contextMenuNode.type}
             </div>
           </div>
-          <div className="mt-1 flex flex-col gap-1">
+          <div className="mt-2 flex flex-col gap-2">
             <button
               onClick={handleOpenProperties}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <PanelRight size={14} />
               Abrir propriedades
             </button>
             <button
               onClick={handleCopyNode}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Copy size={14} />
               Copiar
             </button>
             {contextMenuNode.type === 'idea' && (
-              <div className="rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+              <div className="rounded-[22px] border border-slate-200 p-2 dark:border-slate-700">
                 <div className="px-1 pb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
                   Texto
                 </div>
@@ -1287,7 +1499,7 @@ const FlowCanvasInner = () => {
                             format.key as 'textBold' | 'textItalic' | 'textUnderline' | 'textStrike',
                           )
                         }
-                        className={`flex items-center justify-center rounded-md px-2 py-2 transition-colors ${
+                        className={`flex items-center justify-center rounded-2xl px-2 py-2.5 transition-colors ${
                           isActive
                             ? 'bg-blue-500 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
@@ -1302,10 +1514,36 @@ const FlowCanvasInner = () => {
                 </div>
               </div>
             )}
+            {contextMenuNode.type === 'idea' && (
+              <div className="rounded-[22px] border border-slate-200 p-2 dark:border-slate-700">
+                <div className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                  Aparência
+                </div>
+                <div className="flex flex-wrap gap-2 px-1 pb-2">
+                  {IDEA_COLOR_PRESETS.map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => handleSetIdeaColor(color)}
+                      className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-105 ${
+                        String(contextMenuNode.data.color || '').toLowerCase() === color.toLowerCase()
+                          ? 'border-slate-900 dark:border-white'
+                          : 'border-white/80 dark:border-slate-800'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      aria-label={`Cor ${color}`}
+                      title={`Aplicar ${color}`}
+                    />
+                  ))}
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/70 dark:text-slate-300">
+                  Use o conector superior ou inferior para criar uma conexão de referência visual.
+                </div>
+              </div>
+            )}
             {contextMenuNode.type === 'idea' && contextMenuNodeDepth >= 2 && (
               <button
                 onClick={handleToggleIdeaFrame}
-                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <SquareDashed size={14} />
                 {contextMenuNode.data.descendantFrame ? 'Remover moldura' : 'Adicionar moldura'}
@@ -1313,14 +1551,14 @@ const FlowCanvasInner = () => {
             )}
             <button
               onClick={handleDisconnectNode}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Unlink2 size={14} />
               Desconectar manualmente
             </button>
             <button
               onClick={handleDeleteNode}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
             >
               <Trash2 size={14} />
               Excluir

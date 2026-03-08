@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Filter, Folder, Image as ImageIcon, Lightbulb, Search, StickyNote } from 'lucide-react';
 import { useFlowStore } from '../store/useFlowStore';
 import type { MindFlowNode, NodeType } from '../types';
+import { isStructuralEdge } from '../utils/nodeLayout';
 
 const TYPE_ICON: Record<NodeType, typeof Lightbulb> = {
   idea: Lightbulb,
@@ -120,7 +121,7 @@ export const StructurePanel = () => {
   const edgesBySource = useMemo(() => {
     const bySource = new Map<string, MindFlowNode[]>();
     edges
-      .filter((edge) => !edge.hidden)
+      .filter((edge) => isStructuralEdge(edge))
       .forEach((edge) => {
         const target = visibleNodes.find((node) => node.id === edge.target);
         if (!target) return;
@@ -131,7 +132,7 @@ export const StructurePanel = () => {
     return bySource;
   }, [edges, visibleNodes]);
 
-  const incomingTargets = useMemo(() => new Set(edges.filter((edge) => !edge.hidden).map((edge) => edge.target)), [edges]);
+  const incomingTargets = useMemo(() => new Set(edges.filter((edge) => isStructuralEdge(edge)).map((edge) => edge.target)), [edges]);
   const rootNodes = useMemo(
     () => visibleNodes.filter((node) => !incomingTargets.has(node.id) && !node.parentId),
     [incomingTargets, visibleNodes],

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { MindFlowEdge, MindFlowNode } from '../types';
+import { DEFAULT_EDGE_COLOR } from './colors';
 import { getDefaultIdeaColorByDepth, getIncomingEdge, getNextChildBasePosition, getNodeDepth, resolveNodeCollision } from './nodeLayout';
 
 type RelatedIdeaMode = 'child' | 'sibling';
@@ -77,6 +78,10 @@ export const createRelatedIdea = ({
     target: newNodeId,
     targetHandle: 'left',
     type: 'animated',
+    data: {
+      color: DEFAULT_EDGE_COLOR,
+      thickness: '1',
+    },
   };
 
   pushHistory();

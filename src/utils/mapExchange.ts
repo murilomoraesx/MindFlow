@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { MapData, MindFlowEdge, MindFlowNode } from '../types';
-import { getDefaultIdeaColorByDepth } from './nodeLayout';
+import { getDefaultIdeaColorByDepth, isStructuralEdge } from './nodeLayout';
 import { normalizeMapData } from './mapSchema';
 
 const INDENT = '  ';
@@ -15,6 +15,7 @@ const buildTree = (nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
   const childrenBySource = new Map<string, MindFlowNode[]>();
 
   edges.forEach((edge) => {
+    if (!isStructuralEdge(edge)) return;
     const sourceNode = nodeById.get(edge.source);
     const targetNode = nodeById.get(edge.target);
     if (!sourceNode || !targetNode) return;
@@ -31,7 +32,7 @@ const buildTree = (nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
     childrenBySource.set(sourceId, children);
   });
 
-  const targets = new Set(edges.map((edge) => edge.target));
+  const targets = new Set(edges.filter((edge) => isStructuralEdge(edge)).map((edge) => edge.target));
   const roots = nodes.filter((node) => !targets.has(node.id)).sort((a, b) => {
     if (a.position.y !== b.position.y) return a.position.y - b.position.y;
     return a.position.x - b.position.x;
@@ -42,7 +43,7 @@ const buildTree = (nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
 
 export const exportMapToMarkdown = (mapName: string, nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
   const visibleNodes = nodes.filter((node) => !node.hidden);
-  const visibleEdges = edges.filter((edge) => !edge.hidden);
+  const visibleEdges = edges.filter((edge) => isStructuralEdge(edge));
   const { roots, childrenBySource } = buildTree(visibleNodes, visibleEdges);
 
   const lines: string[] = [`# ${sanitizeLabel(mapName)}`, ''];

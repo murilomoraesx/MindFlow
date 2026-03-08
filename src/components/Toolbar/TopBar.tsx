@@ -3,7 +3,7 @@ import { Undo2, Redo2, Download, Moon, Sun, Menu, Save, ChevronLeft, ChevronDown
 import type { EdgeAnimationStyle, LayoutType } from '../../types';
 import { exportFlowToPdf } from '../../utils/export';
 import { downloadTextFile, exportMapToMarkdown } from '../../utils/mapExchange';
-import { SHARED_COLOR_PALETTE } from '../../utils/colors';
+import { DEFAULT_EDGE_COLOR, SHARED_COLOR_PALETTE } from '../../utils/colors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CANVAS_POINTER_EVENT = 'mindflow:canvas-pointerdown';
@@ -60,8 +60,8 @@ export const TopBar = () => {
   const globalEdgeColor = useMemo(() => {
     if (edges.length === 0) return undefined;
     const [firstEdge] = edges;
-    const firstColor = firstEdge?.data?.color as string | undefined;
-    return edges.every((edge) => (edge.data?.color as string | undefined) === firstColor) ? firstColor : null;
+    const firstColor = (firstEdge?.data?.color as string | undefined) || DEFAULT_EDGE_COLOR;
+    return edges.every((edge) => ((edge.data?.color as string | undefined) || DEFAULT_EDGE_COLOR) === firstColor) ? firstColor : null;
   }, [edges]);
   const globalEdgeVariant = useMemo(() => {
     if (edges.length === 0) return 'glow';
@@ -72,10 +72,10 @@ export const TopBar = () => {
       : null;
   }, [edges]);
   const globalEdgeThickness = useMemo(() => {
-    if (edges.length === 0) return '2';
+    if (edges.length === 0) return '1';
     const [firstEdge] = edges;
-    const firstThickness = String(firstEdge?.data?.thickness || '2');
-    return edges.every((edge) => String(edge.data?.thickness || '2') === firstThickness) ? firstThickness : null;
+    const firstThickness = String(firstEdge?.data?.thickness || '1');
+    return edges.every((edge) => String(edge.data?.thickness || '1') === firstThickness) ? firstThickness : null;
   }, [edges]);
 
   useEffect(() => {

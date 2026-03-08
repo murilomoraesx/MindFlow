@@ -1,60 +1,89 @@
 import { memo } from 'react';
-import { BaseEdge, EdgeProps, getBezierPath } from '@xyflow/react';
+import { BaseEdge, EdgeProps } from '@xyflow/react';
+import { useFlowStore } from '../../store/useFlowStore';
+import type { EdgeAnimationDirection, EdgeAnimationStyle } from '../../types';
 
-export const ReferenceEdge = memo(({
-  id,
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const buildReferenceCurvePath = ({
   sourceX,
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
+}: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}) => {
+  const dx = targetX - sourceX;
+  const direction = dx >= 0 ? 1 : -1;
+  const absDx = Math.abs(dx);
+  const lead = clamp(absDx * 0.36, 38, 116);
+  const sourceControlX = sourceX + lead * direction;
+  const targetControlX = targetX - lead * direction;
+
+  return `M ${sourceX} ${sourceY} C ${sourceControlX} ${sourceY}, ${targetControlX} ${targetY}, ${targetX} ${targetY}`;
+};
+
+export const ReferenceEdge = memo(({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
   style = {},
   data,
+  selected,
 }: EdgeProps) => {
+  const { edgeAnimationStyle: globalAnimationStyle } = useFlowStore((state) => state.settings);
   const referenceColor = (data?.color as string | undefined) || '#22C55E';
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const edgeVariant = (data?.variant as 'solid' | 'dashed' | 'glow' | undefined) || 'dashed';
+  const animationStyle = ((data?.animationStyle as EdgeAnimationStyle | undefined) || globalAnimationStyle || 'subtle') as EdgeAnimationStyle;
+  const animationDirection = ((data?.animationDirection as EdgeAnimationDirection | undefined) || 'forward') as EdgeAnimationDirection;
+  const animationEnabled = data?.animationEnabled !== false;
+  const naturalDirection: EdgeAnimationDirection = sourceX <= targetX ? 'forward' : 'reverse';
+  const resolvedDirection: EdgeAnimationDirection = animationDirection === 'reverse'
+    ? (naturalDirection === 'forward' ? 'reverse' : 'forward')
+    : naturalDirection;
+  const keyPoints = resolvedDirection === 'forward' ? '0;1' : '1;0';
+  const edgePath = buildReferenceCurvePath({
     sourceX,
     sourceY,
-    sourcePosition,
     targetX,
     targetY,
-    targetPosition,
-    curvature: 0.38,
   });
-
-  const markerId = `mf-reference-arrow-${id}`;
+  const dashPattern = edgeVariant === 'solid' ? undefined : edgeVariant === 'glow' ? '2 8' : '1.5 9';
+  const particleDuration = animationStyle === 'tech' ? '2.35s' : animationStyle === 'energy' ? '2.65s' : '2.9s';
+  const pulseDuration = animationStyle === 'tech' ? '1.95s' : '2.35s';
 
   return (
     <>
-      <defs>
-        <marker
-          id={markerId}
-          markerWidth="10"
-          markerHeight="10"
-          refX="8"
-          refY="5"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill={referenceColor} opacity="0.92" />
-        </marker>
-      </defs>
       <BaseEdge
         path={edgePath}
-        markerEnd={`url(#${markerId})`}
         style={{
           ...style,
-          strokeWidth: 3,
+          strokeWidth: selected ? 1.7 : 1.2,
           stroke: referenceColor,
-          strokeDasharray: '1 8',
+          strokeDasharray: dashPattern,
           strokeLinecap: 'round',
-          opacity: 0.92,
-          filter: `drop-shadow(0 0 8px ${referenceColor}33)`,
+          opacity: selected ? 0.58 : edgeVariant === 'glow' ? 0.48 : 0.38,
+          filter: edgeVariant === 'glow' ? `drop-shadow(0 0 5px ${referenceColor}18)` : `drop-shadow(0 0 2px ${referenceColor}0f)`,
         }}
       />
-      <circle cx={sourceX} cy={sourceY} r="6.5" fill="#ffffff" stroke={referenceColor} strokeWidth="3" opacity="0.96" />
-      <circle cx={targetX} cy={targetY} r="6.5" fill="#ffffff" stroke={referenceColor} strokeWidth="3" opacity="0.96" />
-      <circle cx={labelX} cy={labelY} r="4.5" fill={referenceColor} opacity="0.92" />
+      <circle cx={sourceX} cy={sourceY} r="2.6" fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth="1.25" opacity="0.54" />
+      <circle cx={targetX} cy={targetY} r="2.6" fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth="1.25" opacity="0.54" />
+      {animationEnabled && (
+        <>
+          <circle r="1.55" fill={referenceColor} opacity="0.52">
+            <animateMotion dur={particleDuration} keyPoints={keyPoints} keyTimes="0;1" repeatCount="indefinite" path={edgePath} />
+            <animate attributeName="opacity" values="0.08;0.52;0.08" dur={pulseDuration} repeatCount="indefinite" />
+          </circle>
+          <circle r="0.82" fill="#ffffff" opacity="0.48">
+            <animateMotion dur={particleDuration} begin="-1.1s" keyPoints={keyPoints} keyTimes="0;1" repeatCount="indefinite" path={edgePath} />
+            <animate attributeName="opacity" values="0.04;0.38;0.04" dur={pulseDuration} begin="-1.1s" repeatCount="indefinite" />
+          </circle>
+        </>
+      )}
     </>
   );
 });

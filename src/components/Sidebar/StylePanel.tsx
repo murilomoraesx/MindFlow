@@ -283,6 +283,7 @@ export const StylePanel = () => {
   const imageCaptionAlign = ((targetData.imageCaptionAlign as 'left' | 'center' | 'right') || 'center') as 'left' | 'center' | 'right';
   const edgeAnimationStyle = ((targetData.animationStyle as EdgeAnimationStyle | undefined) || settings.edgeAnimationStyle || 'energy') as EdgeAnimationStyle;
   const edgeAnimationDirection = ((targetData.animationDirection as EdgeAnimationDirection | undefined) || 'forward') as EdgeAnimationDirection;
+  const edgeAnimationEnabled = targetData.animationEnabled !== false;
   const groupVariant = ((targetData.groupVariant as 'glass' | 'solid' | 'outline') || 'glass') as 'glass' | 'solid' | 'outline';
   const groupPadding = Math.max(12, Math.min(120, Number(targetData.groupPadding || 24)));
   const groupWidth = Math.max(260, Math.min(1800, Number(targetData.groupWidth || 420)));
@@ -492,7 +493,7 @@ export const StylePanel = () => {
                       key={thickness.value}
                       onClick={() => updateEdgeData(targetId!, { thickness: thickness.value })}
                       className={`flex-1 rounded border py-1 text-xs font-medium transition-colors ${
-                        (targetData.thickness || '2') === thickness.value
+                        (targetData.thickness || '1') === thickness.value
                           ? 'border-pink-500 bg-pink-500/10 text-pink-600 dark:text-pink-400'
                           : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
                       }`}
@@ -505,6 +506,17 @@ export const StylePanel = () => {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Animação do fluxo</label>
+                <button
+                  onClick={() => updateEdgeData(targetId!, { animationEnabled: !edgeAnimationEnabled })}
+                  className={`flex items-center justify-between rounded border px-3 py-2 text-xs font-medium transition-colors ${
+                    edgeAnimationEnabled
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{selectedEdge?.type === 'reference' ? 'Movimento da referência' : 'Play desta linha'}</span>
+                  <span>{edgeAnimationEnabled ? 'Ligado' : 'Desligado'}</span>
+                </button>
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { value: 'energy', label: 'Energia' },
@@ -525,7 +537,9 @@ export const StylePanel = () => {
                   ))}
                 </div>
                 <p className="text-[10px] leading-4 text-slate-400">
-                  O play global das linhas fica na barra superior.
+                  {selectedEdge?.type === 'reference'
+                    ? 'Referências mantêm movimento próprio por padrão. Use o botão acima para desligar só esta linha.'
+                    : 'Use o botão acima para ativar ou desligar a animação desta linha específica, independente do fluxo global.'}
                 </p>
               </div>
 

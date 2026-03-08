@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { BaseEdge, EdgeProps } from '@xyflow/react';
 import { useFlowStore } from '../../store/useFlowStore';
 import type { EdgeAnimationDirection, EdgeAnimationStyle } from '../../types';
+import { DEFAULT_EDGE_COLOR } from '../../utils/colors';
 
 type AnimatedEdgeProps = EdgeProps & { className?: string };
 
@@ -59,18 +60,19 @@ export const AnimatedEdge = memo(({
   const isFunnelConnection = sourceHandleId?.startsWith('stage-');
 
   // Custom user data overrides default styles
-  const thicknessClass = String(data?.thickness || (isFunnelConnection ? '3' : '2'));
+  const thicknessClass = String(data?.thickness || (isFunnelConnection ? '3' : '1'));
   const thicknessMap: Record<string, number> = { 'thin': 1, 'normal': 2, 'thick': 4, '1': 1, '2': 2, '3': 3, '4': 4 };
   const strokeW = thicknessMap[thicknessClass] || parseInt(thicknessClass, 10) || 2;
   const edgeVariant = (data?.variant as 'solid' | 'dashed' | 'glow' | undefined) || 'glow';
 
-  const customColor = data?.color as string | undefined;
+  const customColor = (data?.color as string | undefined) || (!isFunnelConnection ? DEFAULT_EDGE_COLOR : undefined);
   const animationStyle = ((data?.animationStyle as EdgeAnimationStyle | undefined) || globalAnimationStyle || 'energy') as EdgeAnimationStyle;
   const animationDirection = ((data?.animationDirection as EdgeAnimationDirection | undefined) || 'forward') as EdgeAnimationDirection;
+  const animationEnabled = data?.animationEnabled === true || (data?.animationEnabled !== false && edgeAnimationsEnabled);
 
-  const particleColor = customColor || (isFunnelConnection ? '#ec4899' : '#8B5CF6'); // Pink for funnel, Purple for ideas
+  const particleColor = customColor || (isFunnelConnection ? '#ec4899' : DEFAULT_EDGE_COLOR);
   // If custom color is provided, we use inline style instead of Tailwind class
-  const edgeColorClass = customColor ? '' : (isFunnelConnection ? 'text-pink-400 dark:text-pink-500' : 'text-slate-400 dark:text-slate-500');
+  const edgeColorClass = customColor ? '' : (isFunnelConnection ? 'text-pink-400 dark:text-pink-500' : '');
   const strokeOpacity = selected ? 0.85 : edgeVariant === 'glow' ? (isFunnelConnection ? 0.75 : 0.5) : isFunnelConnection ? 0.5 : 0.35;
   const strokeDasharray = edgeVariant === 'dashed' ? '8 8' : undefined;
   const filter = edgeVariant === 'glow' ? `drop-shadow(0 0 8px ${particleColor}55)` : undefined;
@@ -91,7 +93,7 @@ export const AnimatedEdge = memo(({
   const keyPoints = resolvedDirection === 'forward' ? '0;1' : '1;0';
 
   const renderAnimatedPayload = () => {
-    if (!edgeAnimationsEnabled) return null;
+    if (!animationEnabled) return null;
 
     if (animationStyle === 'subtle') {
       return (

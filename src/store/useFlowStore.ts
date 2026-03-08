@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dagre from 'dagre';
 import { Position } from '@xyflow/react';
 import { LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '../types';
+import { DEFAULT_EDGE_COLOR } from '../utils/colors';
 import { createBlankMap, DEFAULT_MAP_SETTINGS, normalizeMapData } from '../utils/mapSchema';
 import { snapPositionToGrid } from '../utils/nodeLayout';
 
@@ -521,6 +522,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       targetHandle: connection.targetHandle || 'left',
       type: 'animated',
       animated: false,
+      data: {
+        color: DEFAULT_EDGE_COLOR,
+        thickness: '1',
+      },
     };
     const targetNode = nodes.find((node) => node.id === connection.target);
     set({

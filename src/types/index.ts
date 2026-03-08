@@ -26,6 +26,7 @@ export interface EdgeData extends Record<string, unknown> {
   variant?: 'solid' | 'dashed' | 'glow';
   animationStyle?: EdgeAnimationStyle;
   animationDirection?: EdgeAnimationDirection;
+  animationEnabled?: boolean;
 }
 
 export interface NodeComment {

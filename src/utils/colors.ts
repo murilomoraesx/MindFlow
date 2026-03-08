@@ -32,6 +32,8 @@ export const SHARED_COLOR_PALETTE = [
   '#96CEB4',
 ] as const;
 
+export const DEFAULT_EDGE_COLOR = '#0256DE';
+
 export const GRADIENTS = {
   idea: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
   funnel: 'linear-gradient(135deg, #EC4899, #8B5CF6)',
