@@ -142,12 +142,12 @@ export const StructurePanel = () => {
 
   return (
     <aside
-      className="h-full w-[clamp(16rem,19vw,20rem)] flex-shrink-0 border-r border-slate-200 bg-white/82 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/78"
+      className="h-full w-[clamp(16rem,19vw,20rem)] flex-shrink-0 border-r border-slate-200 bg-white/82 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/80"
     >
       <div className="flex h-full flex-col">
         <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Estrutura</div>
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-900/92">
             <Search size={14} className="text-slate-400" />
             <input
               value={search}

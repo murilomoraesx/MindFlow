@@ -473,7 +473,17 @@ const FlowCanvasInner = () => {
         data: {
           label: baseLabel,
           color: baseColor,
-          ...(type === 'note' ? { noteVariant: 'sticky', notePriority: 'medium', noteChecklist: '', notePinned: false } : {}),
+          ...(type === 'note'
+            ? {
+                noteVariant: 'sticky',
+                notePriority: 'medium',
+                noteChecklist: '',
+                notePinned: false,
+                noteLayout: 'compact',
+                noteShowDescription: true,
+                noteShowChecklist: true,
+              }
+            : {}),
           ...(type === 'group' ? { groupVariant: 'glass', groupPadding: 24, groupWidth: 420, groupHeight: 280 } : {}),
           ...(type === 'image'
             ? {
@@ -695,15 +705,16 @@ const FlowCanvasInner = () => {
         persistIdeaSiblingOrder(existingParentId, typedCurrentNodes, liveEdges);
         shouldAutoLayout = settings.autoLayoutOnInsert;
       } else if (settings.autoLayoutOnInsert && shouldKeepFreeMove) {
+        const storeNodes = store.nodes as MindFlowNode[];
         const snappedPosition = resolveNodeCollision({
           basePosition: snapPositionToGrid(node.position),
           nodeType: draggedType,
-          nodes: typedCurrentNodes,
+          nodes: storeNodes,
           ignoreNodeId: node.id,
           stepY: CANVAS_GRID_SIZE,
         });
         store.setNodes(
-          typedCurrentNodes.map((currentNode) =>
+          storeNodes.map((currentNode) =>
             currentNode.id === node.id
               ? ({ ...currentNode, position: snappedPosition } as MindFlowNode)
               : currentNode,
@@ -801,6 +812,8 @@ const FlowCanvasInner = () => {
 
   const totalPresentationSteps = presentationNodeIds.length;
   const currentPresentationStep = totalPresentationSteps > 0 ? presentationIndex + 1 : 0;
+  const currentPresentationNode =
+    totalPresentationSteps > 0 ? nodes.find((node) => node.id === presentationNodeIds[presentationIndex]) || null : null;
   const handleSelectionEnd = useCallback(() => {
     if (!selectionModeEnabled) return;
     setSelectionModeEnabled(false);
@@ -896,8 +909,8 @@ const FlowCanvasInner = () => {
       event.preventDefault();
       event.stopPropagation();
 
-      const menuHeight = (node as MindFlowNode).type === 'idea' ? 282 : 192;
-      const { x: safeX, y: safeY } = getSafeContextMenuPosition(event.clientX, event.clientY, 208, menuHeight);
+      const menuHeight = (node as MindFlowNode).type === 'idea' ? 250 : 168;
+      const { x: safeX, y: safeY } = getSafeContextMenuPosition(event.clientX, event.clientY, 184, menuHeight);
 
       setNodes((currentNodes) =>
         currentNodes.map((item) => ({
@@ -1333,7 +1346,7 @@ const FlowCanvasInner = () => {
         edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.35, maxZoom: 0.9 }}
-        className={`bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${selectionModeEnabled ? 'mf-selection-mode' : 'mf-navigation-mode'} ${cleanMode ? 'mf-clean-mode' : ''} ${focusModeEnabled ? 'mf-focus-mode' : ''} ${focusNodeIds ? 'mf-focus-engaged' : ''}`}
+        className={`bg-slate-50 transition-colors duration-300 dark:bg-[#061223] ${selectionModeEnabled ? 'mf-selection-mode' : 'mf-navigation-mode'} ${cleanMode ? 'mf-clean-mode' : ''} ${focusModeEnabled ? 'mf-focus-mode' : ''} ${focusNodeIds ? 'mf-focus-engaged' : ''}`}
         minZoom={0.1}
         maxZoom={4}
         defaultEdgeOptions={{ type: 'animated' }}
@@ -1379,40 +1392,61 @@ const FlowCanvasInner = () => {
           </Panel>
         )}
         {presentationMode && (
-          <Panel position="top-right">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/95 px-2 py-1.5 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-              <button
-                onClick={prevPresentationStep}
-                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                title="Etapa anterior"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                {currentPresentationStep}/{totalPresentationSteps || 0}
-              </span>
-              <button
-                onClick={nextPresentationStep}
-                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                title="Proxima etapa"
-              >
-                <ChevronRight size={14} />
-              </button>
-              <div className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-700" />
-              <button
-                onClick={handlePresentationExport}
-                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                title="Exportar PDF"
-              >
-                <Download size={14} />
-              </button>
-              <button
-                onClick={stopPresentation}
-                className="rounded p-1 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-                title="Sair da apresentacao"
-              >
-                <X size={14} />
-              </button>
+          <Panel position="top-center">
+            <div className="w-[min(31rem,calc(100vw-2rem))] rounded-[20px] border border-slate-200/60 bg-white/72 p-2.5 shadow-[0_18px_48px_rgba(15,23,42,0.10)] backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/70">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-500">
+                    Etapa {currentPresentationStep} de {totalPresentationSteps || 0}
+                  </div>
+                  <div className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {String(currentPresentationNode?.data.label || 'Sem título')}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
+                    <span>{totalPresentationSteps > 0 ? Math.round((currentPresentationStep / totalPresentationSteps) * 100) : 0}% do roteiro</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={prevPresentationStep}
+                    className="rounded-xl border border-slate-200 bg-white/60 p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    title="Etapa anterior"
+                  >
+                    <ChevronLeft size={13} />
+                  </button>
+                  <button
+                    onClick={nextPresentationStep}
+                    className="rounded-xl border border-slate-200 bg-white/60 p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    title="Próxima etapa"
+                  >
+                    <ChevronRight size={13} />
+                  </button>
+                  <button
+                    onClick={handlePresentationExport}
+                    className="rounded-xl border border-slate-200 bg-white/60 p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    title="Exportar PDF"
+                  >
+                    <Download size={13} />
+                  </button>
+                  <button
+                    onClick={stopPresentation}
+                    className="rounded-xl border border-rose-200 bg-rose-50/70 p-1.5 text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                    title="Sair da apresentação"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100/90 dark:bg-slate-800/90">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-500 via-blue-500 to-cyan-400 transition-all duration-500"
+                  style={{
+                    width: `${totalPresentationSteps > 0 ? (currentPresentationStep / totalPresentationSteps) * 100 : 0}%`,
+                  }}
+                />
+              </div>
             </div>
           </Panel>
         )}
@@ -1450,35 +1484,35 @@ const FlowCanvasInner = () => {
       )}
       {nodeContextMenu && contextMenuNode && (
         <div
-          className="absolute z-[70] min-w-[252px] overflow-hidden rounded-[26px] border border-slate-200/90 bg-white/95 p-2 shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95"
+          className="absolute z-[70] min-w-[212px] max-w-[228px] overflow-hidden rounded-[20px] border border-slate-200/90 bg-white/95 p-1.5 shadow-[0_20px_44px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95"
           style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
         >
-          <div className="border-b border-slate-200 px-3 pb-2 pt-1 dark:border-slate-700">
-            <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+          <div className="border-b border-slate-200 px-2.5 pb-1.5 pt-1 dark:border-slate-700">
+            <div className="truncate text-[11px] font-semibold text-slate-800 dark:text-slate-100">
               {String(contextMenuNode.data.label || 'Nó sem título')}
             </div>
-            <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+            <div className="text-[9px] uppercase tracking-[0.14em] text-slate-400">
               {contextMenuNode.type}
             </div>
           </div>
-          <div className="mt-2 flex flex-col gap-2">
+          <div className="mt-1.5 flex flex-col gap-1.5">
             <button
               onClick={handleOpenProperties}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              <PanelRight size={14} />
+              <PanelRight size={13} />
               Abrir propriedades
             </button>
             <button
               onClick={handleCopyNode}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              <Copy size={14} />
+              <Copy size={13} />
               Copiar
             </button>
             {contextMenuNode.type === 'idea' && (
-              <div className="rounded-[22px] border border-slate-200 p-2 dark:border-slate-700">
-                <div className="px-1 pb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+              <div className="rounded-[16px] border border-slate-200 p-1.5 dark:border-slate-700">
+                <div className="px-1 pb-1 text-[9px] font-medium uppercase tracking-[0.14em] text-slate-400">
                   Texto
                 </div>
                 <div className="grid grid-cols-4 gap-1">
@@ -1499,7 +1533,7 @@ const FlowCanvasInner = () => {
                             format.key as 'textBold' | 'textItalic' | 'textUnderline' | 'textStrike',
                           )
                         }
-                        className={`flex items-center justify-center rounded-2xl px-2 py-2.5 transition-colors ${
+                        className={`flex items-center justify-center rounded-xl px-2 py-2 transition-colors ${
                           isActive
                             ? 'bg-blue-500 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
@@ -1507,7 +1541,7 @@ const FlowCanvasInner = () => {
                         title={format.label}
                         aria-label={format.label}
                       >
-                        <Icon size={14} />
+                        <Icon size={13} />
                       </button>
                     );
                   })}
@@ -1515,16 +1549,16 @@ const FlowCanvasInner = () => {
               </div>
             )}
             {contextMenuNode.type === 'idea' && (
-              <div className="rounded-[22px] border border-slate-200 p-2 dark:border-slate-700">
-                <div className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+              <div className="rounded-[16px] border border-slate-200 p-1.5 dark:border-slate-700">
+                <div className="px-1 pb-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-slate-400">
                   Aparência
                 </div>
-                <div className="flex flex-wrap gap-2 px-1 pb-2">
+                <div className="flex flex-wrap gap-1.5 px-1 pb-1.5">
                   {IDEA_COLOR_PRESETS.map((color) => (
                     <button
                       key={color}
                       onClick={() => handleSetIdeaColor(color)}
-                      className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-105 ${
+                      className={`h-6 w-6 rounded-full border-2 transition-transform hover:scale-105 ${
                         String(contextMenuNode.data.color || '').toLowerCase() === color.toLowerCase()
                           ? 'border-slate-900 dark:border-white'
                           : 'border-white/80 dark:border-slate-800'
@@ -1535,7 +1569,7 @@ const FlowCanvasInner = () => {
                     />
                   ))}
                 </div>
-                <div className="rounded-2xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/70 dark:text-slate-300">
+                <div className="rounded-xl bg-slate-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-500 dark:bg-slate-800/70 dark:text-slate-300">
                   Use o conector superior ou inferior para criar uma conexão de referência visual.
                 </div>
               </div>
@@ -1543,24 +1577,24 @@ const FlowCanvasInner = () => {
             {contextMenuNode.type === 'idea' && contextMenuNodeDepth >= 2 && (
               <button
                 onClick={handleToggleIdeaFrame}
-                className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                <SquareDashed size={14} />
+                <SquareDashed size={13} />
                 {contextMenuNode.data.descendantFrame ? 'Remover moldura' : 'Adicionar moldura'}
               </button>
             )}
             <button
               onClick={handleDisconnectNode}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              <Unlink2 size={14} />
+              <Unlink2 size={13} />
               Desconectar manualmente
             </button>
             <button
               onClick={handleDeleteNode}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+              className="flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
             >
-              <Trash2 size={14} />
+              <Trash2 size={13} />
               Excluir
             </button>
           </div>

@@ -43,13 +43,15 @@ export const ShortcutsModal = () => {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowShortcutsModal(false)}
         >
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.985 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="relative flex max-h-[min(84vh,46rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
           >
             <button
               onClick={() => setShowShortcutsModal(false)}
@@ -61,7 +63,8 @@ export const ShortcutsModal = () => {
               <Keyboard size={20} className="text-violet-500" />
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Atalhos do Teclado</h2>
             </div>
-            <div className="flex flex-col gap-1">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="flex flex-col gap-1">
               {shortcuts.map((s) => (
                 <div key={s.keys} className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <span className="text-sm text-slate-600 dark:text-slate-400">{s.description}</span>
@@ -70,6 +73,7 @@ export const ShortcutsModal = () => {
                   </kbd>
                 </div>
               ))}
+              </div>
             </div>
           </motion.div>
         </motion.div>

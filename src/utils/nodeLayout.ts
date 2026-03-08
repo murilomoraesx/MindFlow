@@ -12,7 +12,7 @@ const NODE_SIZE_BY_TYPE: Record<NodeType, { width: number; height: number }> = {
   idea: { width: 180, height: 80 },
   funnel: { width: 280, height: 220 },
   group: { width: 400, height: 300 },
-  note: { width: 220, height: 210 },
+  note: { width: 232, height: 132 },
   image: { width: 280, height: 220 },
 };
 
@@ -20,6 +20,9 @@ export const getNodeSize = (node: Pick<MindFlowNode, 'type' | 'measured' | 'data
   const fallback = NODE_SIZE_BY_TYPE[node.type];
   const groupWidth = node.type === 'group' && typeof node.data?.groupWidth === 'number' ? node.data.groupWidth : undefined;
   const groupHeight = node.type === 'group' && typeof node.data?.groupHeight === 'number' ? node.data.groupHeight : undefined;
+  const noteWidth = node.type === 'note' && typeof node.data?.width === 'number' ? node.data.width : undefined;
+  const noteHeight = node.type === 'note' && typeof node.data?.height === 'number' ? node.data.height : undefined;
+  const noteLayout = node.type === 'note' && node.data?.noteLayout === 'expanded' ? 'expanded' : 'compact';
   const isCompactIdea =
     node.type === 'idea' &&
     !!node.data?.isEditing &&
@@ -29,12 +32,30 @@ export const getNodeSize = (node: Pick<MindFlowNode, 'type' | 'measured' | 'data
   return {
     width:
       node.measured?.width ||
+      noteWidth ||
       groupWidth ||
-      (isCompactIdea ? 132 : hasFramedDescendant ? 156 : fallback.width),
+      (node.type === 'note'
+        ? noteLayout === 'expanded'
+          ? 268
+          : fallback.width
+        : isCompactIdea
+          ? 132
+          : hasFramedDescendant
+            ? 156
+            : fallback.width),
     height:
       node.measured?.height ||
+      noteHeight ||
       groupHeight ||
-      (isCompactIdea ? 64 : hasFramedDescendant ? 64 : fallback.height),
+      (node.type === 'note'
+        ? noteLayout === 'expanded'
+          ? 176
+          : fallback.height
+        : isCompactIdea
+          ? 64
+          : hasFramedDescendant
+            ? 64
+            : fallback.height),
   };
 };
 

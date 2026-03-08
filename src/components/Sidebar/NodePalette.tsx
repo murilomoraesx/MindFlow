@@ -7,7 +7,7 @@ const PALETTE_ITEMS: { type: NodeType; label: string; hint: string; icon: React.
   { type: 'idea', label: 'Ideia', hint: 'Ramo principal', icon: Lightbulb, color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' },
   { type: 'funnel', label: 'Funil', hint: 'Métricas e etapas', icon: Filter, color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' },
   { type: 'group', label: 'Grupo', hint: 'Agrupa nós por tema', icon: Folder, color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
-  { type: 'note', label: 'Nota', hint: 'Checklist e prioridade', icon: StickyNote, color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
+  { type: 'note', label: 'Nota', hint: 'Anotação livre no canvas', icon: StickyNote, color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
   { type: 'image', label: 'Imagem', hint: 'Frame, filtro e fonte', icon: ImageIcon, color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' },
 ];
 
@@ -19,7 +19,7 @@ export const NodePalette = ({ collapsed = false }: { collapsed?: boolean }) => {
 
   return (
     <div className={cn(
-      "min-h-0 h-full self-stretch flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 flex flex-col gap-6 dark:border-slate-800 dark:bg-slate-950 transition-[width] duration-300",
+      "min-h-0 h-full self-stretch flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 flex flex-col gap-6 dark:border-slate-800/80 dark:bg-slate-900/78 dark:backdrop-blur-xl transition-[width] duration-300",
       collapsed ? "w-16" : "w-[clamp(14rem,18vw,18rem)]"
     )}>
       <div>
@@ -29,7 +29,7 @@ export const NodePalette = ({ collapsed = false }: { collapsed?: boolean }) => {
             <div
               key={item.type}
               className={cn(
-                "flex cursor-grab items-center rounded-md border border-slate-200 bg-white transition-colors hover:border-slate-300 hover:shadow-sm active:cursor-grabbing dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700",
+                "flex cursor-grab items-center rounded-md border border-slate-200 bg-white transition-colors hover:border-slate-300 hover:shadow-sm active:cursor-grabbing dark:border-slate-700/80 dark:bg-slate-900/92 dark:hover:border-slate-600",
                 collapsed ? "justify-center p-2" : "gap-3 p-2.5"
               )}
               draggable

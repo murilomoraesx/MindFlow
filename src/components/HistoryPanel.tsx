@@ -20,7 +20,7 @@ export const HistoryPanel = () => {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 24, opacity: 0.96 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="h-full w-full max-w-sm border-l border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+            className="h-full w-full max-w-sm border-l border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-700/70 dark:bg-slate-900/82 backdrop-blur-xl"
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">

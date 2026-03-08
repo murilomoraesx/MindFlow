@@ -38,6 +38,9 @@ export const ReferenceEdge = memo(({
   const { edgeAnimationStyle: globalAnimationStyle } = useFlowStore((state) => state.settings);
   const referenceColor = (data?.color as string | undefined) || '#22C55E';
   const edgeVariant = (data?.variant as 'solid' | 'dashed' | 'glow' | undefined) || 'dashed';
+  const thicknessClass = String(data?.thickness || '1');
+  const thicknessMap: Record<string, number> = { thin: 1, normal: 2, thick: 4, '1': 1, '2': 2, '3': 3, '4': 4 };
+  const strokeWidth = thicknessMap[thicknessClass] || parseInt(thicknessClass, 10) || 1;
   const animationStyle = ((data?.animationStyle as EdgeAnimationStyle | undefined) || globalAnimationStyle || 'subtle') as EdgeAnimationStyle;
   const animationDirection = ((data?.animationDirection as EdgeAnimationDirection | undefined) || 'forward') as EdgeAnimationDirection;
   const animationEnabled = data?.animationEnabled !== false;
@@ -62,7 +65,7 @@ export const ReferenceEdge = memo(({
         path={edgePath}
         style={{
           ...style,
-          strokeWidth: selected ? 1.7 : 1.2,
+          strokeWidth: selected ? strokeWidth + 0.35 : strokeWidth,
           stroke: referenceColor,
           strokeDasharray: dashPattern,
           strokeLinecap: 'round',
@@ -70,8 +73,8 @@ export const ReferenceEdge = memo(({
           filter: edgeVariant === 'glow' ? `drop-shadow(0 0 5px ${referenceColor}18)` : `drop-shadow(0 0 2px ${referenceColor}0f)`,
         }}
       />
-      <circle cx={sourceX} cy={sourceY} r="2.6" fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth="1.25" opacity="0.54" />
-      <circle cx={targetX} cy={targetY} r="2.6" fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth="1.25" opacity="0.54" />
+      <circle cx={sourceX} cy={sourceY} r={strokeWidth > 2 ? "3" : "2.6"} fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth={strokeWidth > 2 ? "1.45" : "1.25"} opacity="0.54" />
+      <circle cx={targetX} cy={targetY} r={strokeWidth > 2 ? "3" : "2.6"} fill="rgba(255,255,255,0.72)" stroke={referenceColor} strokeWidth={strokeWidth > 2 ? "1.45" : "1.25"} opacity="0.54" />
       {animationEnabled && (
         <>
           <circle r="1.55" fill={referenceColor} opacity="0.52">

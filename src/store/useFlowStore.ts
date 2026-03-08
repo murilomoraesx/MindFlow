@@ -20,6 +20,11 @@ import { LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '..
 import { DEFAULT_EDGE_COLOR } from '../utils/colors';
 import { createBlankMap, DEFAULT_MAP_SETTINGS, normalizeMapData } from '../utils/mapSchema';
 import { snapPositionToGrid } from '../utils/nodeLayout';
+import {
+  ensureNodeCreationOrder,
+  getNextCreationOrder,
+  getPresentationSequence,
+} from '../utils/presentation';
 
 const initialMap = createBlankMap(uuidv4(), 'Meu Mapa Mental');
 const THEME_STORAGE_KEY = 'mindflow_theme';
@@ -61,6 +66,8 @@ interface FlowState {
   setShowCommandPalette: (show: boolean) => void;
   showHistoryPanel: boolean;
   setShowHistoryPanel: (show: boolean) => void;
+  showPresentationPanel: boolean;
+  setShowPresentationPanel: (show: boolean) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   layoutType: LayoutType;
@@ -156,6 +163,9 @@ const canConnectEdge = ({
 const getNodeSize = (node: MindFlowNode) => {
   const groupWidth = node.type === 'group' && typeof node.data.groupWidth === 'number' ? node.data.groupWidth : undefined;
   const groupHeight = node.type === 'group' && typeof node.data.groupHeight === 'number' ? node.data.groupHeight : undefined;
+  const noteWidth = node.type === 'note' && typeof node.data.width === 'number' ? node.data.width : undefined;
+  const noteHeight = node.type === 'note' && typeof node.data.height === 'number' ? node.data.height : undefined;
+  const noteLayout = node.type === 'note' && node.data.noteLayout === 'expanded' ? 'expanded' : 'compact';
   const isCompactIdea =
     node.type === 'idea' &&
     !!node.data.isEditing &&
@@ -164,6 +174,7 @@ const getNodeSize = (node: MindFlowNode) => {
   const hasFramedDescendant = node.type === 'idea' && !!node.data.descendantFrame;
   const width =
     node.measured?.width ||
+    noteWidth ||
     (node.type === 'funnel'
       ? 280
       : node.type === 'group'
@@ -171,7 +182,9 @@ const getNodeSize = (node: MindFlowNode) => {
         : node.type === 'image'
           ? 280
           : node.type === 'note'
-            ? 220
+            ? noteLayout === 'expanded'
+              ? 268
+              : 232
             : isCompactIdea
               ? 132
               : hasFramedDescendant
@@ -179,6 +192,7 @@ const getNodeSize = (node: MindFlowNode) => {
                 : 180);
   const height =
     node.measured?.height ||
+    noteHeight ||
     (node.type === 'funnel'
       ? 220
       : node.type === 'group'
@@ -186,28 +200,15 @@ const getNodeSize = (node: MindFlowNode) => {
         : node.type === 'image'
           ? 220
           : node.type === 'note'
-            ? 210
+            ? noteLayout === 'expanded'
+              ? 176
+              : 132
             : isCompactIdea
               ? 64
               : hasFramedDescendant
                 ? 64
                 : 80);
   return { width, height };
-};
-
-const getPresentationSequence = (nodes: MindFlowNode[]) => {
-  const visibleNodes = nodes.filter((node) => !node.hidden);
-  const selectedVisibleNodes = visibleNodes.filter((node) => node.selected);
-  const baseList = selectedVisibleNodes.length > 0 ? selectedVisibleNodes : visibleNodes;
-
-  return [...baseList].sort((a, b) => {
-    const aOrder = Number.isFinite(a.data.presentationOrder) ? Number(a.data.presentationOrder) : Number.MAX_SAFE_INTEGER;
-    const bOrder = Number.isFinite(b.data.presentationOrder) ? Number(b.data.presentationOrder) : Number.MAX_SAFE_INTEGER;
-
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    if (a.position.y !== b.position.y) return a.position.y - b.position.y;
-    return a.position.x - b.position.x;
-  });
 };
 
 const MINDBAP_HORIZONTAL_GAP = 88;
@@ -466,6 +467,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
   showHistoryPanel: false,
   setShowHistoryPanel: (show) => set({ showHistoryPanel: show }),
+  showPresentationPanel: false,
+  setShowPresentationPanel: (show) => set({ showPresentationPanel: show }),
   sidebarCollapsed: false,
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   layoutType: 'mindmap',
@@ -480,7 +483,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
 
     set({
-      nodes: applyNodeChanges(changes as never, get().nodes) as MindFlowNode[],
+      nodes: ensureNodeCreationOrder(applyNodeChanges(changes as never, get().nodes) as MindFlowNode[]),
     });
   },
   onEdgesChange: (changes: EdgeChange<MindFlowEdge>[]) => {
@@ -575,7 +578,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
   },
   setNodes: (nodes) => {
-    set({ nodes: typeof nodes === 'function' ? nodes(get().nodes) : nodes });
+    const nextNodes = typeof nodes === 'function' ? nodes(get().nodes) : nodes;
+    set({ nodes: ensureNodeCreationOrder(nextNodes) });
   },
   setEdges: (edges) => {
     set({ edges: typeof edges === 'function' ? edges(get().edges) : edges });
@@ -583,8 +587,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   addNode: (node) => {
     set({ saveStatus: 'unsaved' });
     get().pushHistory();
-    set({ nodes: [...get().nodes, node] });
-    if (node.type === 'idea' || get().settings.autoLayoutOnInsert) {
+    const currentNodes = ensureNodeCreationOrder(get().nodes);
+    const nextNode = Number.isFinite(node.data.creationOrder)
+      ? node
+      : {
+          ...node,
+          data: {
+            ...node.data,
+            creationOrder: getNextCreationOrder(currentNodes),
+            presentationIncluded: node.data.presentationIncluded !== false,
+            presentationAutoOrder: node.data.presentationAutoOrder !== false,
+          },
+        };
+    set({ nodes: [...currentNodes, nextNode] });
+    if (node.type === 'idea') {
       requestAnimationFrame(() => {
         get().autoLayout();
       });
@@ -596,7 +612,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       get().pushHistory();
     }
     set({
-      nodes: get().nodes.map((node) => {
+      nodes: ensureNodeCreationOrder(get().nodes).map((node) => {
         if (node.id === id) {
           return { ...node, data: { ...node.data, ...data } };
         }
@@ -682,7 +698,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({ presentationMode: true, selectionModeEnabled: false });
   },
   startPresentation: () => {
-    const sequence = getPresentationSequence(get().nodes);
+    const sequence = getPresentationSequence(get().nodes, { selectedPreference: false });
     if (sequence.length === 0) return;
 
     const nodeIds = sequence.map((node) => node.id);
@@ -733,10 +749,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const { width, height } = getNodeSize(node);
     const targetX = node.position.x + width / 2;
     const targetY = node.position.y + height / 2;
+    const zoom = typeof node.data.presentationZoom === 'number' ? Math.max(0.8, Math.min(2.2, node.data.presentationZoom)) : 1.2;
 
     rfInstance.setCenter(targetX, targetY, {
-      zoom: 1.2,
-      duration: 500,
+      zoom,
+      duration: 540,
     });
   },
   setCurrentView: (view) => set({ currentView: view }),
@@ -1130,19 +1147,21 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
   loadMap: (mapData) => {
     const normalizedMap = normalizeMapData(mapData);
+    const normalizedNodes = ensureNodeCreationOrder(normalizedMap.nodes);
 
     set({
-      nodes: normalizedMap.nodes,
+      nodes: normalizedNodes,
       edges: normalizedMap.edges,
       mapName: normalizedMap.name,
       mapId: normalizedMap.id,
       mapProjectId: normalizedMap.projectId || null,
       settings: normalizedMap.settings,
-      history: [{ nodes: normalizedMap.nodes, edges: normalizedMap.edges }],
+      history: [{ nodes: normalizedNodes, edges: normalizedMap.edges }],
       historyIndex: 0,
       presentationMode: false,
       presentationNodeIds: [],
       presentationIndex: 0,
+      showPresentationPanel: false,
     });
   },
 }));

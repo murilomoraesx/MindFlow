@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ProjectFolder, RecentMap } from '../types';
 import { MapTemplateId, createMapFromTemplate, normalizeMapData } from '../utils/mapSchema';
 import { downloadTextFile, exportMapToMarkdown, parseMarkdownToMap } from '../utils/mapExchange';
+import { deleteStoredMapData, loadMapDataWithRecovery, persistMapData } from '../utils/persistence';
 
 const PROJECTS_STORAGE_KEY = 'mindflow_projects';
 const RECENT_MAPS_STORAGE_KEY = 'mindflow_recent_maps';
@@ -112,7 +113,7 @@ export const ProjectList = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const mapInputRef = useRef<HTMLInputElement>(null);
-  const { theme, setTheme, setCurrentView, loadMap } = useFlowStore();
+  const { theme, setTheme, setCurrentView, loadMap, mapProjectId } = useFlowStore();
 
   useEffect(() => {
     const storedMaps = parseRecentMaps(localStorage.getItem(RECENT_MAPS_STORAGE_KEY));
@@ -151,6 +152,9 @@ export const ProjectList = () => {
 
     setProjects(normalizedProjects);
     setRecentMaps(normalizedMaps.sort((a, b) => b.lastEdited - a.lastEdited));
+    if (mapProjectId && normalizedProjects.some((project) => project.id === mapProjectId)) {
+      setActiveProjectId(mapProjectId);
+    }
   }, []);
 
   useEffect(() => {
@@ -213,20 +217,16 @@ export const ProjectList = () => {
   }, [recentMaps, activeProjectId, searchQuery]);
 
   const handleOpenMap = (id: string) => {
-    const mapDataStr = localStorage.getItem(`mindflow_${id}`);
-    if (!mapDataStr) return;
-
-    try {
-      const parsed = JSON.parse(mapDataStr);
-      const normalized = normalizeMapData(parsed);
-      const resolvedProjectId = normalized.projectId || activeProjectId || projects[0]?.id;
-      loadMap({ ...normalized, projectId: resolvedProjectId });
-      setCurrentView('editor');
-      setImportError(null);
-    } catch (error) {
-      console.error('Erro ao abrir mapa:', error);
-      setImportError('Não foi possível abrir este mapa. O arquivo parece inválido.');
+    const normalized = loadMapDataWithRecovery(id);
+    if (!normalized) {
+      setImportError('Não foi possível abrir este mapa. O arquivo principal e os backups parecem inválidos.');
+      return;
     }
+
+    const resolvedProjectId = normalized.projectId || activeProjectId || projects[0]?.id;
+    loadMap({ ...normalized, projectId: resolvedProjectId });
+    setCurrentView('editor');
+    setImportError(null);
   };
 
   const handleCreateProject = () => {
@@ -287,7 +287,7 @@ export const ProjectList = () => {
     const map = createMapFromTemplate(newMapTemplate, newId, name);
     const mapWithProject = { ...map, projectId: activeProjectId, lastEdited: Date.now() };
 
-    localStorage.setItem(`mindflow_${newId}`, JSON.stringify(mapWithProject));
+    persistMapData(mapWithProject, { forceBackup: true });
 
     upsertRecentMap({
       id: newId,
@@ -321,7 +321,7 @@ export const ProjectList = () => {
     if (deleteTarget.type === 'project') {
       const projectId = deleteTarget.id;
       const mapsToRemove = recentMaps.filter((map) => map.projectId === projectId);
-      mapsToRemove.forEach((map) => localStorage.removeItem(`mindflow_${map.id}`));
+      mapsToRemove.forEach((map) => deleteStoredMapData(map.id));
 
       const nextMaps = recentMaps.filter((map) => map.projectId !== projectId);
       const nextProjects = projects.filter((project) => project.id !== projectId);
@@ -343,7 +343,7 @@ export const ProjectList = () => {
     }
 
     const mapToDelete = recentMaps.find((map) => map.id === deleteTarget.id);
-    localStorage.removeItem(`mindflow_${deleteTarget.id}`);
+    deleteStoredMapData(deleteTarget.id);
 
     const nextMaps = recentMaps.filter((map) => map.id !== deleteTarget.id);
     persistMaps(nextMaps);
@@ -360,12 +360,13 @@ export const ProjectList = () => {
 
   const handleDuplicateMap = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const mapDataStr = localStorage.getItem(`mindflow_${map.id}`);
-    if (!mapDataStr) return;
+    const normalized = loadMapDataWithRecovery(map.id);
+    if (!normalized) {
+      setImportError('Não foi possível duplicar este mapa.');
+      return;
+    }
 
     try {
-      const parsed = JSON.parse(mapDataStr);
-      const normalized = normalizeMapData(parsed);
       const duplicatedId = uuidv4();
       const duplicatedMap = {
         ...normalized,
@@ -375,7 +376,7 @@ export const ProjectList = () => {
         projectId: map.projectId || activeProjectId || projects[0]?.id,
       };
 
-      localStorage.setItem(`mindflow_${duplicatedId}`, JSON.stringify(duplicatedMap));
+      persistMapData(duplicatedMap, { forceBackup: true });
       upsertRecentMap({
         id: duplicatedId,
         name: duplicatedMap.name,
@@ -397,18 +398,16 @@ export const ProjectList = () => {
 
   const handleExportMapJson = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const mapDataStr = localStorage.getItem(`mindflow_${map.id}`);
-    if (!mapDataStr) return;
-
-    downloadTextFile(`${map.name}.json`, mapDataStr, 'application/json;charset=utf-8');
+    const mapData = loadMapDataWithRecovery(map.id);
+    if (!mapData) return;
+    downloadTextFile(`${map.name}.json`, JSON.stringify(mapData, null, 2), 'application/json;charset=utf-8');
   };
 
   const handleExportMapMarkdown = (event: React.MouseEvent, map: RecentMap) => {
     event.stopPropagation();
-    const mapDataStr = localStorage.getItem(`mindflow_${map.id}`);
-    if (!mapDataStr) return;
+    const normalized = loadMapDataWithRecovery(map.id);
+    if (!normalized) return;
     try {
-      const normalized = normalizeMapData(JSON.parse(mapDataStr));
       const markdown = exportMapToMarkdown(normalized.name, normalized.nodes, normalized.edges);
       downloadTextFile(`${map.name}.md`, markdown, 'text/markdown;charset=utf-8');
     } catch (error) {
@@ -447,7 +446,7 @@ export const ProjectList = () => {
             projectId: activeProjectId,
           };
 
-          localStorage.setItem(`mindflow_${newId}`, JSON.stringify(importedMap));
+          persistMapData(importedMap, { forceBackup: true });
           upsertRecentMap({
             id: newId,
             name: importedMap.name,
@@ -469,7 +468,7 @@ export const ProjectList = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col items-center bg-slate-50 p-8 dark:bg-slate-950">
+    <div className="flex h-full w-full flex-col items-center bg-slate-50 p-8 dark:bg-[#061223]">
       {showCreateProjectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-2xl dark:border-slate-700 dark:bg-slate-900">

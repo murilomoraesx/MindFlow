@@ -7,11 +7,15 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { CommandPalette } from './components/CommandPalette';
 import { HistoryPanel } from './components/HistoryPanel';
 import { StructurePanel } from './components/StructurePanel';
+import { PresentationOutlinePanel } from './components/PresentationOutlinePanel';
+import { LoginScreen } from './components/LoginScreen';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useFlowStore } from './store/useFlowStore';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CURRENT_SCHEMA_VERSION, DEFAULT_MAP_SETTINGS } from './utils/mapSchema';
+import { isMindflowAuthenticated } from './utils/auth';
+import { persistMapData } from './utils/persistence';
 
 export default function App() {
   const {
@@ -29,6 +33,7 @@ export default function App() {
     mapProjectId,
     settings,
   } = useFlowStore();
+  const [isAuthenticated, setIsAuthenticated] = useState(() => isMindflowAuthenticated());
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -54,7 +59,7 @@ export default function App() {
             settings: settings || DEFAULT_MAP_SETTINGS,
             projectId: mapProjectId || undefined,
           };
-          localStorage.setItem(`mindflow_${mapId}`, JSON.stringify(mapData));
+          persistMapData(mapData);
 
           const recentMaps = JSON.parse(localStorage.getItem('mindflow_recent_maps') || '[]');
           const existingIndex = recentMaps.findIndex((m: any) => m.id === mapId);
@@ -78,9 +83,13 @@ export default function App() {
     }
   }, [nodes, edges, mapName, mapId, mapProjectId, currentView, settings]);
 
+  if (!isAuthenticated) {
+    return <LoginScreen onSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   if (currentView === 'projects') {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300 selection:bg-slate-200 dark:selection:bg-slate-800">
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#061223] dark:text-slate-100 transition-colors duration-300 selection:bg-slate-200 dark:selection:bg-slate-800">
         <ProjectList />
       </div>
     );
@@ -88,7 +97,7 @@ export default function App() {
 
   return (
     <div
-      className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 selection:bg-slate-200 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-slate-800"
+      className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 selection:bg-slate-200 dark:bg-[#061223] dark:text-slate-100 dark:selection:bg-slate-800"
     >
       <ReactFlowProvider>
         {!presentationMode && <TopBar />}
@@ -139,6 +148,7 @@ export default function App() {
         </div>
         {!presentationMode && <CommandPalette />}
         {!presentationMode && <HistoryPanel />}
+        {!presentationMode && <PresentationOutlinePanel />}
       </ReactFlowProvider>
       <ShortcutsModal />
     </div>

@@ -3,7 +3,7 @@ import type { MapData, MapSettings, MindFlowEdge, MindFlowNode, NodeData, NodeTy
 import { calculateFunnelStages } from './funnel';
 import { IDEA_ROOT_COLOR } from './nodeLayout';
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
   autoLayoutOnInsert: true,
@@ -75,7 +75,16 @@ const normalizeNodeData = (nodeType: NodeType, rawData: unknown): NodeData => {
   return {
     ...data,
     label,
-    color: typeof data.color === 'string' ? data.color : nodeType === 'idea' ? IDEA_ROOT_COLOR : nodeType === 'funnel' ? '#DC2626' : '#8B5CF6',
+    color:
+      typeof data.color === 'string'
+        ? data.color
+        : nodeType === 'idea'
+          ? IDEA_ROOT_COLOR
+          : nodeType === 'funnel'
+            ? '#DC2626'
+            : nodeType === 'note'
+              ? '#F59E0B'
+              : '#8B5CF6',
     textBold: !!data.textBold,
     textItalic: !!data.textItalic,
     textUnderline: !!data.textUnderline,
@@ -85,11 +94,21 @@ const normalizeNodeData = (nodeType: NodeType, rawData: unknown): NodeData => {
     isEditing: false,
     funnelStages: nodeType === 'funnel' ? normalizeFunnelStages(data.funnelStages, startingTraffic) : data.funnelStages,
     presentationOrder: Number.isFinite(data.presentationOrder) ? Number(data.presentationOrder) : undefined,
+    presentationIncluded: data.presentationIncluded !== false,
+    presentationAutoOrder: data.presentationAutoOrder !== false,
+    creationOrder: Number.isFinite(data.creationOrder) ? Number(data.creationOrder) : undefined,
+    presentationZoom:
+      typeof data.presentationZoom === 'number'
+        ? Math.max(0.8, Math.min(2.2, Number(data.presentationZoom)))
+        : undefined,
     journeyStage: isJourneyStage(data.journeyStage) ? data.journeyStage : undefined,
     noteVariant: data.noteVariant === 'sticky' || data.noteVariant === 'outline' || data.noteVariant === 'glass' ? data.noteVariant : 'sticky',
     notePriority: data.notePriority === 'low' || data.notePriority === 'high' || data.notePriority === 'medium' ? data.notePriority : 'medium',
     noteChecklist: typeof data.noteChecklist === 'string' ? data.noteChecklist : '',
     notePinned: !!data.notePinned,
+    noteLayout: data.noteLayout === 'expanded' ? 'expanded' : 'compact',
+    noteShowDescription: data.noteShowDescription !== false,
+    noteShowChecklist: data.noteShowChecklist !== false,
     imageFit: data.imageFit === 'contain' || data.imageFit === 'cover' ? data.imageFit : 'contain',
     imageFrame:
       data.imageFrame === 'polaroid' || data.imageFrame === 'circle' || data.imageFrame === 'rounded' ? data.imageFrame : 'rounded',
@@ -178,7 +197,15 @@ export const normalizeMapData = (rawMap: unknown): MapData => {
   const sourceSchemaVersion = typeof candidate.schemaVersion === 'number' ? candidate.schemaVersion : 0;
 
   const rawNodes = Array.isArray(candidate.nodes) ? candidate.nodes : [];
-  const nodes = rawNodes.map((node, index) => normalizeNode(node, index));
+  const nodes = rawNodes.map((node, index) => normalizeNode(node, index)).map((node, index) => ({
+    ...node,
+    data: {
+      ...node.data,
+      creationOrder: Number.isFinite(node.data.creationOrder) ? Number(node.data.creationOrder) : index + 1,
+      presentationIncluded: node.data.presentationIncluded !== false,
+      presentationAutoOrder: node.data.presentationAutoOrder !== false,
+    },
+  }));
   const safeNodes = nodes.length > 0 ? nodes : [normalizeNode(null, 0)];
   const validNodeIds = new Set(safeNodes.map((node) => node.id));
 

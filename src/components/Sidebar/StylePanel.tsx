@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useFlowStore } from '../../store/useFlowStore';
 import { useReactFlow } from '@xyflow/react';
-import { Settings2, Trash2, Copy, Plus, Unlink2, MessageSquarePlus, CheckCircle2, Circle } from 'lucide-react';
+import { Settings2, Trash2, Copy, Plus, Unlink2, MessageSquarePlus, CheckCircle2, Circle, Play, Pause } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { EdgeAnimationDirection, EdgeAnimationStyle, FunnelStage, MindFlowNode, MindFlowEdge, JourneyStage, NodeType, NodeComment } from '../../types';
 import { buildStagesFromTemplate, calculateFunnelStages, createDefaultStage, FUNNEL_TEMPLATES, getFunnelSummary } from '../../utils/funnel';
@@ -78,14 +78,19 @@ const JOURNEY_STAGE_OPTIONS: { value: JourneyStage; label: string }[] = [
 
 const NOTE_VARIANTS: { value: 'glass' | 'sticky' | 'outline'; label: string }[] = [
   { value: 'glass', label: 'Vidro' },
-  { value: 'sticky', label: 'Adesiva' },
-  { value: 'outline', label: 'Outline' },
+  { value: 'sticky', label: 'Papel' },
+  { value: 'outline', label: 'Contorno' },
 ];
 
 const NOTE_PRIORITIES: { value: 'low' | 'medium' | 'high'; label: string }[] = [
   { value: 'low', label: 'Baixa' },
   { value: 'medium', label: 'Média' },
   { value: 'high', label: 'Alta' },
+];
+
+const NOTE_LAYOUTS: { value: 'compact' | 'expanded'; label: string }[] = [
+  { value: 'compact', label: 'Compacta' },
+  { value: 'expanded', label: 'Expandida' },
 ];
 
 const IMAGE_FIT_OPTIONS: { value: 'cover' | 'contain'; label: string }[] = [
@@ -150,7 +155,7 @@ export const StylePanel = () => {
 
   if (!selectedNode && !selectedEdge) {
     return (
-      <div className={`flex h-full min-h-0 ${panelWidthClass} flex-shrink-0 flex-col items-center justify-center border-l border-slate-200 bg-slate-50/50 p-4 text-center text-slate-400 transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/50`}>
+      <div className={`flex h-full min-h-0 ${panelWidthClass} flex-shrink-0 flex-col items-center justify-center border-l border-slate-200 bg-slate-50/50 p-4 text-center text-slate-400 transition-colors duration-300 dark:border-slate-700/70 dark:bg-slate-900/74 backdrop-blur-xl`}>
         <Settings2 size={24} className="mb-3 opacity-20" />
         <p className="text-xs">Selecione um nó para editar</p>
       </div>
@@ -277,6 +282,7 @@ export const StylePanel = () => {
   const funnelSummary = isFunnelNode ? getFunnelSummary(funnelStages, startingTraffic) : null;
   const noteVariant = ((targetData.noteVariant as 'glass' | 'sticky' | 'outline') || 'glass') as 'glass' | 'sticky' | 'outline';
   const notePriority = ((targetData.notePriority as 'low' | 'medium' | 'high') || 'medium') as 'low' | 'medium' | 'high';
+  const noteLayout = ((targetData.noteLayout as 'compact' | 'expanded') || 'compact') as 'compact' | 'expanded';
   const imageFit = ((targetData.imageFit as 'cover' | 'contain') || 'contain') as 'cover' | 'contain';
   const imageFrame = ((targetData.imageFrame as 'rounded' | 'polaroid' | 'circle') || 'rounded') as 'rounded' | 'polaroid' | 'circle';
   const imageFilter = ((targetData.imageFilter as 'none' | 'mono' | 'warm' | 'cool') || 'none') as 'none' | 'mono' | 'warm' | 'cool';
@@ -295,7 +301,6 @@ export const StylePanel = () => {
           (comment) => comment && typeof comment.text === 'string' && comment.text.trim().length > 0,
         )
       : [];
-
   const updateFunnelData = (updates: Partial<MindFlowNode['data']>, avoidHistory = true) => {
     if (!targetId) return;
     updateNodeData(targetId, updates, avoidHistory);
@@ -366,7 +371,7 @@ export const StylePanel = () => {
   };
 
   return (
-    <div className={`flex h-full min-h-0 ${panelWidthClass} flex-shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-white p-4 transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950`}>
+    <div className={`flex h-full min-h-0 ${panelWidthClass} flex-shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-white p-4 transition-colors duration-300 dark:border-slate-700/70 dark:bg-slate-900/82 backdrop-blur-xl`}>
       <div
         key={targetId}
         className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden pr-1 opacity-0 animate-[fade-in_0.2s_ease-out_forwards]"
@@ -403,18 +408,6 @@ export const StylePanel = () => {
 
           {!isEdge && !isNoteNode && !isImageNode && (
             <>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Roteiro</label>
-                <input
-                  type="number"
-                  value={targetData.presentationOrder ?? ''}
-                  placeholder="Ordem da apresentação"
-                  onChange={(event) => updateNodeData(targetId!, { presentationOrder: parseInteger(event.target.value) }, true)}
-                  onBlur={(event) => updateNodeData(targetId!, { presentationOrder: parseInteger(event.target.value) }, false)}
-                  className="rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-slate-400 dark:border-slate-800 dark:text-slate-100 dark:focus:border-slate-600"
-                />
-              </div>
-
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Jornada</label>
                 <select
@@ -514,8 +507,11 @@ export const StylePanel = () => {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span>{selectedEdge?.type === 'reference' ? 'Movimento da referência' : 'Play desta linha'}</span>
-                  <span>{edgeAnimationEnabled ? 'Ligado' : 'Desligado'}</span>
+                  <span>{selectedEdge?.type === 'reference' ? 'Movimento da referência' : 'Ligar animação'}</span>
+                  <span className="inline-flex items-center gap-1">
+                    {edgeAnimationEnabled ? <Pause size={12} /> : <Play size={12} />}
+                    <span>{edgeAnimationEnabled ? 'Ligado' : 'Desligado'}</span>
+                  </span>
                 </button>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -570,7 +566,7 @@ export const StylePanel = () => {
           {!isEdge && isNoteNode && (
             <>
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Estilo da nota</label>
+                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Aparência da nota</label>
                 <div className="grid grid-cols-3 gap-2">
                   {NOTE_VARIANTS.map((variant) => (
                     <button
@@ -586,6 +582,48 @@ export const StylePanel = () => {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Leitura no canvas</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {NOTE_LAYOUTS.map((layout) => (
+                    <button
+                      key={layout.value}
+                      onClick={() => updateNodeData(targetId!, { noteLayout: layout.value }, false)}
+                      className={`rounded border py-1 text-[10px] font-medium transition-colors ${
+                        noteLayout === layout.value
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {layout.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => updateNodeData(targetId!, { noteShowDescription: !(targetData.noteShowDescription !== false) }, false)}
+                  className={`rounded-md border px-2.5 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                    targetData.noteShowDescription !== false
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Mostrar descrição
+                </button>
+                <button
+                  onClick={() => updateNodeData(targetId!, { noteShowChecklist: !(targetData.noteShowChecklist !== false) }, false)}
+                  className={`rounded-md border px-2.5 py-2 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                    targetData.noteShowChecklist !== false
+                      ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Mostrar checklist
+                </button>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -608,7 +646,7 @@ export const StylePanel = () => {
               </div>
 
               <div className="flex items-center justify-between rounded-md border border-slate-200 px-2.5 py-2 dark:border-slate-800">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Fixar no destaque</span>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Manter em evidência</span>
                 <button
                   onClick={() => updateNodeData(targetId!, { notePinned: !targetData.notePinned }, false)}
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -627,7 +665,7 @@ export const StylePanel = () => {
                 onChange={(value) => updateNodeData(targetId!, { noteChecklist: value }, true)}
                 onBlurSave={(value) => updateNodeData(targetId!, { noteChecklist: value }, false)}
                 isTextArea
-                placeholder="Uma tarefa por linha. Use [x] para concluída."
+                placeholder="Uma tarefa por linha. Clique na bolinha da nota para concluir."
               />
             </>
           )}
