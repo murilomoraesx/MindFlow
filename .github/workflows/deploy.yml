@@ -1,4 +1,4 @@
-name: Deploy to VPS
+name: Deploy MindFlow to VPS
 
 on:
   push:
