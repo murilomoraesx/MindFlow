@@ -16,24 +16,17 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import dagre from 'dagre';
 import { Position } from '@xyflow/react';
-import { CanvasTheme, LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '../types';
+import { LayoutType, MapData, MapSettings, MindFlowNode, MindFlowEdge } from '../types';
 import { createBlankMap, DEFAULT_MAP_SETTINGS, normalizeMapData } from '../utils/mapSchema';
+import { snapPositionToGrid } from '../utils/nodeLayout';
 
 const initialMap = createBlankMap(uuidv4(), 'Meu Mapa Mental');
 const THEME_STORAGE_KEY = 'mindflow_theme';
-const CANVAS_THEME_STORAGE_KEY = 'mindflow_canvas_theme';
 
 const getStoredTheme = (): 'light' | 'dark' => {
   if (typeof window === 'undefined') return 'light';
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   return stored === 'dark' ? 'dark' : 'light';
-};
-
-const getStoredCanvasTheme = (): CanvasTheme => {
-  if (typeof window === 'undefined') return 'moderno';
-  const stored = window.localStorage.getItem(CANVAS_THEME_STORAGE_KEY);
-  const validThemes: CanvasTheme[] = ['elegante', 'moderno', 'tech', 'retro', 'neon', 'cosmos', 'terminal', 'ember'];
-  return validThemes.includes(stored as CanvasTheme) ? (stored as CanvasTheme) : 'moderno';
 };
 
 interface FlowState {
@@ -44,7 +37,6 @@ interface FlowState {
   mapProjectId: string | null;
   settings: MapSettings;
   theme: 'dark' | 'light';
-  canvasTheme: CanvasTheme;
   showMinimap: boolean;
   showStylePanel: boolean;
   cleanMode: boolean;
@@ -86,7 +78,6 @@ interface FlowState {
   setMapName: (name: string) => void;
   setMapProjectId: (projectId: string | null) => void;
   setTheme: (theme: 'dark' | 'light') => void;
-  setCanvasTheme: (theme: CanvasTheme) => void;
   setShowMinimap: (show: boolean) => void;
   setShowStylePanel: (show: boolean) => void;
   setCleanMode: (enabled: boolean) => void;
@@ -116,6 +107,8 @@ interface FlowState {
   loadMap: (mapData: MapData) => void;
 }
 
+const isStructuralEdge = (edge: MindFlowEdge) => edge.type !== 'reference' && !edge.hidden;
+
 const canConnectEdge = ({
   source,
   target,
@@ -133,7 +126,7 @@ const canConnectEdge = ({
   if (source === target) return { valid: false, reason: 'self' as const };
 
   const normalizedEdges = edges.filter(
-    (edge) => edge.id !== ignoreEdgeId && (!replaceTargetParent || edge.target !== target),
+    (edge) => isStructuralEdge(edge) && edge.id !== ignoreEdgeId && (!replaceTargetParent || edge.target !== target),
   );
 
   const duplicate = normalizedEdges.find((edge) => edge.source === source && edge.target === target);
@@ -162,6 +155,12 @@ const canConnectEdge = ({
 const getNodeSize = (node: MindFlowNode) => {
   const groupWidth = node.type === 'group' && typeof node.data.groupWidth === 'number' ? node.data.groupWidth : undefined;
   const groupHeight = node.type === 'group' && typeof node.data.groupHeight === 'number' ? node.data.groupHeight : undefined;
+  const isCompactIdea =
+    node.type === 'idea' &&
+    !!node.data.isEditing &&
+    String(node.data.label || '').trim().length === 0 &&
+    !node.data.descendantFrame;
+  const hasFramedDescendant = node.type === 'idea' && !!node.data.descendantFrame;
   const width =
     node.measured?.width ||
     (node.type === 'funnel'
@@ -172,7 +171,11 @@ const getNodeSize = (node: MindFlowNode) => {
           ? 280
           : node.type === 'note'
             ? 220
-            : 180);
+            : isCompactIdea
+              ? 132
+              : hasFramedDescendant
+                ? 156
+                : 180);
   const height =
     node.measured?.height ||
     (node.type === 'funnel'
@@ -183,7 +186,11 @@ const getNodeSize = (node: MindFlowNode) => {
           ? 220
           : node.type === 'note'
             ? 210
-            : 80);
+            : isCompactIdea
+              ? 64
+              : hasFramedDescendant
+                ? 64
+                : 80);
   return { width, height };
 };
 
@@ -202,6 +209,231 @@ const getPresentationSequence = (nodes: MindFlowNode[]) => {
   });
 };
 
+const MINDBAP_HORIZONTAL_GAP = 88;
+const MINDBAP_ROW_GAP = 92;
+const MINDBAP_ROOT_GAP_ROWS = 1;
+
+const sortChildrenForLayout = (children: MindFlowNode[]) => {
+  return [...children].sort((a, b) => {
+    const orderA = typeof a.data.order === 'number' ? a.data.order : Number.MAX_SAFE_INTEGER;
+    const orderB = typeof b.data.order === 'number' ? b.data.order : Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) return orderA - orderB;
+    if (a.position.y !== b.position.y) return a.position.y - b.position.y;
+    return a.position.x - b.position.x;
+  });
+};
+
+const buildNodeDepthMap = (nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
+  const depthById = new Map<string, number>();
+  const childrenBySource = new Map<string, string[]>();
+  const incomingTargets = new Set<string>();
+
+  edges.forEach((edge) => {
+    if (!isStructuralEdge(edge)) return;
+    incomingTargets.add(edge.target);
+    const siblings = childrenBySource.get(edge.source) || [];
+    siblings.push(edge.target);
+    childrenBySource.set(edge.source, siblings);
+  });
+
+  const roots = nodes
+    .filter((node) => !incomingTargets.has(node.id))
+    .sort((a, b) => (a.position.x === b.position.x ? a.position.y - b.position.y : a.position.x - b.position.x));
+  const queue = roots.map((node) => ({ id: node.id, depth: 0 }));
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    const existingDepth = depthById.get(current.id);
+    if (existingDepth !== undefined && existingDepth <= current.depth) continue;
+    depthById.set(current.id, current.depth);
+
+    const children = childrenBySource.get(current.id) || [];
+    children.forEach((childId) => {
+      queue.push({ id: childId, depth: current.depth + 1 });
+    });
+  }
+
+  nodes.forEach((node) => {
+    if (!depthById.has(node.id)) {
+      depthById.set(node.id, 0);
+    }
+  });
+
+  return depthById;
+};
+
+const buildMindmapLayout = ({
+  nodes,
+  edges,
+  fitView,
+}: {
+  nodes: MindFlowNode[];
+  edges: MindFlowEdge[];
+  fitView?: boolean;
+}) => {
+  const depthById = buildNodeDepthMap(nodes, edges);
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const childrenBySource = new Map<string, MindFlowNode[]>();
+  const incomingTargets = new Set<string>();
+  const maxWidthByDepth = new Map<number, number>();
+
+  edges.forEach((edge) => {
+    if (!isStructuralEdge(edge)) return;
+    const childNode = nodeById.get(edge.target);
+    if (!childNode) return;
+    incomingTargets.add(edge.target);
+    const siblings = childrenBySource.get(edge.source) || [];
+    siblings.push(childNode);
+    childrenBySource.set(edge.source, siblings);
+  });
+
+  childrenBySource.forEach((children, sourceId) => {
+    childrenBySource.set(sourceId, sortChildrenForLayout(children));
+  });
+
+  nodes.forEach((node) => {
+    const depth = depthById.get(node.id) || 0;
+    const { width } = getNodeSize(node);
+    maxWidthByDepth.set(depth, Math.max(maxWidthByDepth.get(depth) || 0, width));
+  });
+
+  const uniqueDepths = [...new Set(depthById.values())].sort((a, b) => a - b);
+
+  const columnXByDepth = new Map<number, number>();
+  uniqueDepths.forEach((depth) => {
+    if (depth === 0) {
+      columnXByDepth.set(depth, 0);
+      return;
+    }
+
+    let x = columnXByDepth.get(0) || 0;
+    for (let currentDepth = 0; currentDepth < depth; currentDepth += 1) {
+      x += (maxWidthByDepth.get(currentDepth) || 180) + MINDBAP_HORIZONTAL_GAP;
+    }
+    columnXByDepth.set(depth, x);
+  });
+
+  const leafSpanById = new Map<string, number>();
+  const computeLeafSpan = (nodeId: string): number => {
+    const cached = leafSpanById.get(nodeId);
+    if (cached !== undefined) return cached;
+
+    const children = childrenBySource.get(nodeId) || [];
+    if (children.length === 0) {
+      leafSpanById.set(nodeId, 1);
+      return 1;
+    }
+
+    if (children.length === 1) {
+      const span = Math.max(1, computeLeafSpan(children[0].id));
+      leafSpanById.set(nodeId, span);
+      return span;
+    }
+
+    const span = children.reduce((sum, child) => sum + computeLeafSpan(child.id), 0);
+    leafSpanById.set(nodeId, span);
+    return span;
+  };
+
+  const orderedRoots = sortChildrenForLayout(nodes.filter((node) => !incomingTargets.has(node.id)));
+  orderedRoots.forEach((root) => computeLeafSpan(root.id));
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const assignNode = (nodeId: string, startRow: number) => {
+    const node = nodeById.get(nodeId);
+    if (!node) return;
+
+    const { height } = getNodeSize(node);
+    const depth = depthById.get(nodeId) || 0;
+    const children = childrenBySource.get(nodeId) || [];
+    const span = leafSpanById.get(nodeId) || 1;
+    const centerRow = startRow + (span - 1) / 2;
+
+    positions.set(nodeId, {
+      x: columnXByDepth.get(depth) || 0,
+      y: centerRow * MINDBAP_ROW_GAP - height / 2,
+    });
+
+    if (children.length === 0) return;
+
+    if (children.length === 1) {
+      assignNode(children[0].id, startRow);
+      return;
+    }
+
+    let childStartRow = startRow;
+    children.forEach((child) => {
+      const childSpan = leafSpanById.get(child.id) || 1;
+      assignNode(child.id, childStartRow);
+      childStartRow += childSpan;
+    });
+  };
+
+  let cursorRow = 0;
+  orderedRoots.forEach((root, index) => {
+    assignNode(root.id, cursorRow);
+    cursorRow += (leafSpanById.get(root.id) || 1) + (index === orderedRoots.length - 1 ? 0 : MINDBAP_ROOT_GAP_ROWS);
+  });
+
+  return positions;
+};
+
+const anchorMindmapRoots = ({
+  nodes,
+  edges,
+  positions,
+}: {
+  nodes: MindFlowNode[];
+  edges: MindFlowEdge[];
+  positions: Map<string, { x: number; y: number }>;
+}) => {
+  const anchoredPositions = new Map(positions);
+  const childrenBySource = new Map<string, string[]>();
+  const incomingTargets = new Set<string>();
+
+  edges.forEach((edge) => {
+    if (!isStructuralEdge(edge)) return;
+    incomingTargets.add(edge.target);
+    const children = childrenBySource.get(edge.source) || [];
+    children.push(edge.target);
+    childrenBySource.set(edge.source, children);
+  });
+
+  const roots = nodes.filter((node) => !incomingTargets.has(node.id));
+  roots.forEach((root) => {
+    const computed = positions.get(root.id);
+    if (!computed) return;
+
+    const delta = {
+      x: root.position.x - computed.x,
+      y: root.position.y - computed.y,
+    };
+
+    const queue = [root.id];
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || visited.has(current)) continue;
+      visited.add(current);
+
+      const currentPosition = anchoredPositions.get(current);
+      if (currentPosition) {
+        anchoredPositions.set(current, {
+          x: currentPosition.x + delta.x,
+          y: currentPosition.y + delta.y,
+        });
+      }
+
+      const children = childrenBySource.get(current) || [];
+      children.forEach((childId) => queue.push(childId));
+    }
+  });
+
+  return anchoredPositions;
+};
+
 export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: initialMap.nodes,
   edges: initialMap.edges,
@@ -210,7 +442,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   mapProjectId: initialMap.projectId || null,
   settings: initialMap.settings || DEFAULT_MAP_SETTINGS,
   theme: getStoredTheme(),
-  canvasTheme: getStoredCanvasTheme(),
   showMinimap: false,
   showStylePanel: false,
   cleanMode: false,
@@ -252,8 +483,19 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     });
   },
   onEdgesChange: (changes: EdgeChange<MindFlowEdge>[]) => {
+    const currentEdges = get().edges;
+    const nodesById = new Map(get().nodes.map((node) => [node.id, node]));
+    const normalizedChanges = changes.filter((change) => {
+      if (change.type !== 'remove') return true;
+      const targetEdge = currentEdges.find((edge) => edge.id === change.id);
+      if (!targetEdge) return true;
+      if (targetEdge.type === 'reference') return true;
+      const sourceNode = nodesById.get(targetEdge.source);
+      const targetNode = nodesById.get(targetEdge.target);
+      return sourceNode?.type !== 'idea' && targetNode?.type !== 'idea';
+    });
     set({
-      edges: applyEdgeChanges(changes as never, get().edges) as MindFlowEdge[],
+      edges: applyEdgeChanges(normalizedChanges as never, currentEdges) as MindFlowEdge[],
     });
   },
   onConnect: (connection: Connection) => {
@@ -419,12 +661,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     }
     set({ theme });
-  },
-  setCanvasTheme: (canvasTheme) => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(CANVAS_THEME_STORAGE_KEY, canvasTheme);
-    }
-    set({ canvasTheme });
   },
   setShowMinimap: (show) => set({ showMinimap: show }),
   setShowStylePanel: (show) => set({ showStylePanel: show }),
@@ -605,11 +841,43 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       });
     if (subtreeNodes.length <= 1) return;
 
+    if (layoutType === 'mindmap') {
+      const subtreePositions = buildMindmapLayout({
+        nodes: subtreeNodes,
+        edges: subtreeEdges,
+      });
+      const rootLayoutPosition = subtreePositions.get(rootNodeId);
+      if (!rootLayoutPosition) return;
+
+      const offset = {
+        x: root.position.x - rootLayoutPosition.x,
+        y: root.position.y - rootLayoutPosition.y,
+      };
+
+      get().pushHistory();
+      set({ saveStatus: 'unsaved' });
+      set({
+        nodes: nodes.map((node) => {
+          const position = subtreePositions.get(node.id);
+          if (!position) return node;
+
+          return {
+            ...node,
+            targetPosition: Position.Left,
+            sourcePosition: Position.Right,
+            position: {
+              x: position.x + offset.x,
+              y: position.y + offset.y,
+            },
+          };
+        }),
+      });
+      return;
+    }
+
     const layoutConfig = layoutType === 'orgchart'
       ? { rankdir: 'TB' as const, nodesep: 72, ranksep: 110 }
-      : layoutType === 'list'
-        ? { rankdir: 'TB' as const, nodesep: 20, ranksep: 56 }
-        : { rankdir: 'LR' as const, nodesep: 72, ranksep: 140 };
+      : { rankdir: 'TB' as const, nodesep: 20, ranksep: 56 };
 
     const graph = new dagre.graphlib.Graph();
     graph.setDefaultEdgeLabel(() => ({}));
@@ -650,7 +918,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       });
     });
 
-    const isVertical = layoutType === 'orgchart' || layoutType === 'list';
+    const isVertical = true;
     get().pushHistory();
     set({ saveStatus: 'unsaved' });
     set({
@@ -661,7 +929,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           ...node,
           targetPosition: isVertical ? Position.Top : Position.Left,
           sourcePosition: isVertical ? Position.Bottom : Position.Right,
-          position,
+          position: snapPositionToGrid(position),
         };
       }),
     });
@@ -714,15 +982,76 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const visibleNodes = nodes.filter((node) => !node.hidden && !node.parentId);
     if (visibleNodes.length === 0) return;
 
-    const previousPositions = new Map(visibleNodes.map((node) => [node.id, node.position]));
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
 
     const isCanvasReset = !!options?.fitView;
+    const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
     const layoutConfig = nextLayoutType === 'orgchart'
       ? { rankdir: 'TB' as const, nodesep: isCanvasReset ? 120 : 80, ranksep: isCanvasReset ? 170 : 120 }
       : nextLayoutType === 'list'
         ? { rankdir: 'TB' as const, nodesep: isCanvasReset ? 36 : 24, ranksep: isCanvasReset ? 88 : 60 }
         : { rankdir: 'LR' as const, nodesep: isCanvasReset ? 120 : 80, ranksep: isCanvasReset ? 210 : 150 };
+
+    const visibleEdges = edges
+      .filter((edge) => isStructuralEdge(edge) && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+      .sort((a, b) => {
+        if (a.source !== b.source) return a.source.localeCompare(b.source);
+        const nodeA = nodeById.get(a.target);
+        const nodeB = nodeById.get(b.target);
+        const orderA = typeof nodeA?.data.order === 'number' ? nodeA.data.order : nodeA?.position.y || 0;
+        const orderB = typeof nodeB?.data.order === 'number' ? nodeB.data.order : nodeB?.position.y || 0;
+        return orderA - orderB;
+      });
+
+    if (nextLayoutType === 'mindmap') {
+      const rawMindmapPositions = buildMindmapLayout({
+        nodes: visibleNodes,
+        edges: visibleEdges,
+        fitView: isCanvasReset,
+      });
+      const mindmapPositions = isCanvasReset
+        ? rawMindmapPositions
+        : anchorMindmapRoots({
+            nodes: visibleNodes,
+            edges: visibleEdges,
+            positions: rawMindmapPositions,
+          });
+
+      const layoutedNodes = nodes.map((node) => {
+        if (node.hidden || node.parentId) return node;
+        const position = mindmapPositions.get(node.id);
+        if (!position) return node;
+
+        return {
+          ...node,
+          targetPosition: Position.Left,
+          sourcePosition: Position.Right,
+          position,
+        };
+      });
+
+      if (options?.recordHistory) {
+        set({ saveStatus: 'unsaved' });
+        get().pushHistory();
+      }
+
+      set({
+        nodes: layoutedNodes as MindFlowNode[],
+        ...(options?.layoutType ? { layoutType: options.layoutType } : {}),
+      });
+
+      if (options?.fitView && rfInstance) {
+        requestAnimationFrame(() => {
+          rfInstance.fitView({
+            padding: 0.35,
+            maxZoom: 0.9,
+            duration: 380,
+          });
+        });
+      }
+
+      return;
+    }
 
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
@@ -737,17 +1066,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       dagreGraph.setNode(node.id, { width, height });
     });
 
-    const nodeById = new Map(visibleNodes.map((node) => [node.id, node]));
-    const visibleEdges = edges
-      .filter((edge) => !edge.hidden && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
-      .sort((a, b) => {
-        if (a.source !== b.source) return a.source.localeCompare(b.source);
-        const nodeA = nodeById.get(a.target);
-        const nodeB = nodeById.get(b.target);
-        const orderA = typeof nodeA?.data.order === 'number' ? nodeA.data.order : nodeA?.position.y || 0;
-        const orderB = typeof nodeB?.data.order === 'number' ? nodeB.data.order : nodeB?.position.y || 0;
-        return orderA - orderB;
-      });
     visibleEdges.forEach((edge) => {
       if (edge.hidden) return;
       dagreGraph.setEdge(edge.source, edge.target);
@@ -767,63 +1085,21 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       });
     });
 
-    const outgoingBySource = new Map<string, string[]>();
-    visibleEdges.forEach((edge) => {
-      const current = outgoingBySource.get(edge.source) || [];
-      current.push(edge.target);
-      outgoingBySource.set(edge.source, current);
-    });
-
-    const incomingTargets = new Set(visibleEdges.map((edge) => edge.target));
-    const rootNodes = visibleNodes.filter((node) => !incomingTargets.has(node.id));
-
-    const appliedDeltaByNode = new Map<string, number>();
-    if (!isCanvasReset) {
-      const rootAnchors = new Map<string, number>();
-      rootNodes.forEach((root) => {
-        const previous = previousPositions.get(root.id);
-        const next = positionedByDagre.get(root.id);
-        if (!previous || !next) return;
-        rootAnchors.set(root.id, previous.y - next.y);
-      });
-
-      rootNodes.forEach((root) => {
-        const deltaY = rootAnchors.get(root.id);
-        if (deltaY === undefined) return;
-
-        const queue = [root.id];
-        const visited = new Set<string>();
-        while (queue.length > 0) {
-          const current = queue.shift();
-          if (!current || visited.has(current)) continue;
-          visited.add(current);
-
-          if (!appliedDeltaByNode.has(current)) {
-            appliedDeltaByNode.set(current, deltaY);
-          }
-
-          const children = outgoingBySource.get(current) || [];
-          children.forEach((childId) => queue.push(childId));
-        }
-      });
-    }
-
     const isVertical = nextLayoutType === 'orgchart' || nextLayoutType === 'list';
     const layoutedNodes = nodes.map((node) => {
       if (node.hidden || node.parentId) return node;
 
       const basePosition = positionedByDagre.get(node.id);
       if (!basePosition) return node;
-      const deltaY = appliedDeltaByNode.get(node.id) || 0;
 
       return {
         ...node,
         targetPosition: isVertical ? Position.Top : Position.Left,
         sourcePosition: isVertical ? Position.Bottom : Position.Right,
-        position: {
+        position: snapPositionToGrid({
           x: basePosition.x,
-          y: basePosition.y + deltaY,
-        },
+          y: basePosition.y,
+        }),
       };
     });
 

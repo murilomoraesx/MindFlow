@@ -5,6 +5,8 @@ export const IDEA_ROOT_COLOR = '#2563EB';
 export const IDEA_CHILD_COLOR = '#8B5CF6';
 export const IDEA_DESCENDANT_TEXT_COLOR = '#111827';
 export const ROOT_IDEA_COLOR_CYCLE = ['#2563EB', '#10B981', '#8B5CF6', '#06B6D4', '#EC4899', '#F59E0B', '#EF4444'];
+export const CANVAS_GRID_SIZE = 24;
+export const isStructuralEdge = (edge: MindFlowEdge) => edge.type !== 'reference' && !edge.hidden;
 
 const NODE_SIZE_BY_TYPE: Record<NodeType, { width: number; height: number }> = {
   idea: { width: 180, height: 80 },
@@ -18,9 +20,32 @@ export const getNodeSize = (node: Pick<MindFlowNode, 'type' | 'measured' | 'data
   const fallback = NODE_SIZE_BY_TYPE[node.type];
   const groupWidth = node.type === 'group' && typeof node.data?.groupWidth === 'number' ? node.data.groupWidth : undefined;
   const groupHeight = node.type === 'group' && typeof node.data?.groupHeight === 'number' ? node.data.groupHeight : undefined;
+  const isCompactIdea =
+    node.type === 'idea' &&
+    !!node.data?.isEditing &&
+    String(node.data?.label || '').trim().length === 0 &&
+    !node.data?.descendantFrame;
+  const hasFramedDescendant = node.type === 'idea' && !!node.data?.descendantFrame;
   return {
-    width: node.measured?.width || groupWidth || fallback.width,
-    height: node.measured?.height || groupHeight || fallback.height,
+    width:
+      node.measured?.width ||
+      groupWidth ||
+      (isCompactIdea ? 132 : hasFramedDescendant ? 156 : fallback.width),
+    height:
+      node.measured?.height ||
+      groupHeight ||
+      (isCompactIdea ? 64 : hasFramedDescendant ? 64 : fallback.height),
+  };
+};
+
+export const snapValueToGrid = (value: number, gridSize = CANVAS_GRID_SIZE) => {
+  return Math.round(value / gridSize) * gridSize;
+};
+
+export const snapPositionToGrid = (position: XYPosition, gridSize = CANVAS_GRID_SIZE): XYPosition => {
+  return {
+    x: snapValueToGrid(position.x, gridSize),
+    y: snapValueToGrid(position.y, gridSize),
   };
 };
 
@@ -79,7 +104,7 @@ export const resolveNodeCollision = ({
 };
 
 export const getIncomingEdge = (nodeId: string, edges: MindFlowEdge[]) => {
-  return edges.find((edge) => edge.target === nodeId);
+  return edges.find((edge) => isStructuralEdge(edge) && edge.target === nodeId);
 };
 
 export const getNodeDepth = (nodeId: string, edges: MindFlowEdge[]) => {
@@ -105,7 +130,7 @@ export const getDefaultIdeaColorByDepth = (depth: number) => {
 };
 
 export const getNextRootIdeaColor = (nodes: MindFlowNode[], edges: MindFlowEdge[]) => {
-  const incomingTargets = new Set(edges.filter((edge) => !edge.hidden).map((edge) => edge.target));
+  const incomingTargets = new Set(edges.filter((edge) => isStructuralEdge(edge)).map((edge) => edge.target));
   const rootIdeas = nodes.filter((node) => node.type === 'idea' && !node.hidden && !incomingTargets.has(node.id));
   return ROOT_IDEA_COLOR_CYCLE[rootIdeas.length % ROOT_IDEA_COLOR_CYCLE.length];
 };
@@ -122,6 +147,7 @@ export const isDescendant = (nodeId: string, ancestorId: string, edges: MindFlow
     visited.add(current);
 
     for (const edge of edges) {
+      if (!isStructuralEdge(edge)) continue;
       if (edge.source !== current) continue;
       if (edge.target === nodeId) return true;
       stack.push(edge.target);
@@ -145,7 +171,7 @@ export const getNextChildBasePosition = ({
   verticalGap?: number;
 }): XYPosition => {
   const children = edges
-    .filter((edge) => edge.source === parentNode.id)
+    .filter((edge) => isStructuralEdge(edge) && edge.source === parentNode.id)
     .map((edge) => nodes.find((node) => node.id === edge.target))
     .filter((node): node is MindFlowNode => !!node && !node.hidden);
 
@@ -153,15 +179,15 @@ export const getNextChildBasePosition = ({
   const childX = parentNode.position.x + parentSize.width + horizontalGap;
 
   if (children.length === 0) {
-    return {
+    return snapPositionToGrid({
       x: childX,
       y: parentNode.position.y,
-    };
+    });
   }
 
   const lastChild = [...children].sort((a, b) => a.position.y - b.position.y)[children.length - 1];
-  return {
+  return snapPositionToGrid({
     x: childX,
     y: lastChild.position.y + verticalGap,
-  };
+  });
 };

@@ -19,7 +19,7 @@ export const NodePalette = ({ collapsed = false }: { collapsed?: boolean }) => {
 
   return (
     <div className={cn(
-      "flex-shrink-0 border-r border-slate-200 bg-slate-50/50 p-4 flex flex-col gap-6 dark:border-slate-800 dark:bg-slate-900/50 transition-[width] duration-300",
+      "min-h-0 h-full self-stretch flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 flex flex-col gap-6 dark:border-slate-800 dark:bg-slate-950 transition-[width] duration-300",
       collapsed ? "w-16" : "w-[clamp(14rem,18vw,18rem)]"
     )}>
       <div>

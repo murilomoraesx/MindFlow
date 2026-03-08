@@ -12,7 +12,7 @@ import {
   type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Bold, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Italic, PanelRight, Plus, Strikethrough, Trash2, Underline, Unlink2, X } from 'lucide-react';
+import { Bold, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Italic, PanelRight, Plus, SquareDashed, Strikethrough, Trash2, Underline, Unlink2, X } from 'lucide-react';
 import { useFlowStore } from '../../store/useFlowStore';
 import { IdeaNode } from '../Nodes/IdeaNode';
 import { FunnelNode } from '../Nodes/FunnelNode';
@@ -25,7 +25,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeType, MindFlowEdge, MindFlowNode } from '../../types';
 import { exportFlowToPdf } from '../../utils/export';
-import { getNextRootIdeaColor, getNodeSize, isDescendant, resolveNodeCollision } from '../../utils/nodeLayout';
+import { CANVAS_GRID_SIZE, getDefaultIdeaColorByDepth, getNextRootIdeaColor, getNodeDepth, getNodeSize, isDescendant, resolveNodeCollision, snapPositionToGrid } from '../../utils/nodeLayout';
 import { captureNodesIntoGroup, fitGroupToChildren } from '../../utils/grouping';
 import { createPastedNode, getCopiedNodeSnapshot, setCopiedNodeSnapshot } from '../../utils/nodeClipboard';
 
@@ -139,6 +139,7 @@ const FlowCanvasInner = () => {
     nextPresentationStep,
     stopPresentation,
     mapName,
+    settings,
   } = useFlowStore();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, getNodes, getIntersectingNodes } = useReactFlow();
@@ -204,6 +205,10 @@ const FlowCanvasInner = () => {
     () => (nodeContextMenu ? nodes.find((node) => node.id === nodeContextMenu.nodeId) || null : null),
     [nodeContextMenu, nodes],
   );
+  const contextMenuNodeDepth = useMemo(
+    () => (contextMenuNode ? getNodeDepth(contextMenuNode.id, edges) : 0),
+    [contextMenuNode, edges],
+  );
   const contextMenuEdge = useMemo(
     () => (edgeContextMenu ? edges.find((edge) => edge.id === edgeContextMenu.nodeId) || null : null),
     [edgeContextMenu, edges],
@@ -246,6 +251,39 @@ const FlowCanvasInner = () => {
     [setNodes],
   );
 
+  const applyIdeaSiblingOrder = useCallback(
+    (nodesSnapshot: MindFlowNode[], edgesSnapshot: MindFlowEdge[], parentIds: Array<string | null>) => {
+      const nextNodes = [...nodesSnapshot];
+
+      parentIds.forEach((parentId) => {
+        if (!parentId) return;
+        const siblingIds = edgesSnapshot.filter((edge) => edge.source === parentId).map((edge) => edge.target);
+        if (siblingIds.length === 0) return;
+
+        const siblingIdSet = new Set(siblingIds);
+        const orderedSiblings = nextNodes
+          .filter((candidate) => siblingIdSet.has(candidate.id) && !candidate.hidden)
+          .sort((a, b) => a.position.y - b.position.y);
+        const orderById = new Map(orderedSiblings.map((sibling, index) => [sibling.id, index + 1]));
+
+        for (let index = 0; index < nextNodes.length; index += 1) {
+          const currentNode = nextNodes[index];
+          if (!orderById.has(currentNode.id)) continue;
+          nextNodes[index] = {
+            ...currentNode,
+            data: {
+              ...currentNode.data,
+              order: orderById.get(currentNode.id),
+            },
+          } as MindFlowNode;
+        }
+      });
+
+      return nextNodes;
+    },
+    [],
+  );
+
   const getSafeFloatingPosition = useCallback((clientX: number, clientY: number, boxWidth: number, boxHeight: number) => {
     const wrapperRect = reactFlowWrapper.current?.getBoundingClientRect();
     const baseX = wrapperRect ? clientX - wrapperRect.left + 18 : clientX + 18;
@@ -274,10 +312,10 @@ const FlowCanvasInner = () => {
       if (!originNode) return;
 
       const flowPosition = screenToFlowPosition({ x: clientX, y: clientY });
-      const basePosition = {
+      const basePosition = snapPositionToGrid({
         x: flowPosition.x - 68,
         y: flowPosition.y - 28,
-      };
+      });
       const position = resolveNodeCollision({
         basePosition,
         nodeType: 'idea',
@@ -285,9 +323,6 @@ const FlowCanvasInner = () => {
       });
 
       const newNodeId = uuidv4();
-      const sourceColor = typeof originNode.data.color === 'string' && originNode.data.color.trim().length > 0
-        ? originNode.data.color
-        : getNextRootIdeaColor(currentNodes, currentEdges);
       const newNode: MindFlowNode = {
         id: newNodeId,
         type: 'idea',
@@ -295,7 +330,7 @@ const FlowCanvasInner = () => {
         selected: true,
         data: {
           label: 'Nova Ideia',
-          color: sourceColor,
+          color: getDefaultIdeaColorByDepth(1),
         },
       };
 
@@ -319,6 +354,11 @@ const FlowCanvasInner = () => {
         targetHandle: connectionState.handleType === 'source' ? newNodeSide : originSide,
         type: 'animated',
       };
+
+      const newDepth = getNodeDepth(newNodeId, [...currentEdges, newEdge]);
+      newNode.data.color = newDepth === 0
+        ? getNextRootIdeaColor(currentNodes, currentEdges)
+        : getDefaultIdeaColorByDepth(newDepth);
 
       store.pushHistory();
       store.setSaveStatus('unsaved');
@@ -380,7 +420,7 @@ const FlowCanvasInner = () => {
       const currentNodes = getNodes() as MindFlowNode[];
 
       const position = resolveNodeCollision({
-        basePosition: dropPosition,
+        basePosition: snapPositionToGrid(dropPosition),
         nodeType: type,
         nodes: currentNodes,
       });
@@ -567,15 +607,42 @@ const FlowCanvasInner = () => {
 
         const edgesToKeep = liveEdges.filter((edge) => edge.target !== node.id);
         const existingEdge = liveEdges.find((edge) => edge.target === node.id);
+        const nextEdges = [...edgesToKeep, newEdge];
         const previousParentId = existingEdge?.source || null;
         const parentChanged = !existingEdge || existingEdge.source !== closestNode.id;
+        const previousDepth = getNodeDepth(node.id, liveEdges);
+        const nextDepth = getNodeDepth(node.id, nextEdges);
+        const shouldResetIdeaColor = previousDepth !== nextDepth;
 
         if (parentChanged) {
+          const storeNodes = store.nodes as MindFlowNode[];
+          let nextNodes = storeNodes.map((currentNode) => ({ ...currentNode })) as MindFlowNode[];
+
+          if (shouldResetIdeaColor) {
+            nextNodes = nextNodes.map((currentNode) =>
+              currentNode.id === node.id
+                ? ({
+                    ...currentNode,
+                    data: {
+                      ...currentNode.data,
+                      color: nextDepth === 0
+                        ? getNextRootIdeaColor(
+                            storeNodes.filter((candidate) => candidate.id !== node.id),
+                            nextEdges.filter((edge) => edge.target !== node.id),
+                          )
+                        : getDefaultIdeaColorByDepth(nextDepth),
+                    },
+                  } as MindFlowNode)
+                : currentNode,
+            );
+          }
+
+          nextNodes = applyIdeaSiblingOrder(nextNodes, nextEdges, [previousParentId, closestNode.id]);
+
           store.pushHistory();
-          store.setEdges([...edgesToKeep, newEdge]);
           store.setSaveStatus('unsaved');
-          persistIdeaSiblingOrder(previousParentId, typedCurrentNodes, edgesToKeep);
-          persistIdeaSiblingOrder(closestNode.id, typedCurrentNodes, [...edgesToKeep, newEdge]);
+          store.setNodes(nextNodes);
+          store.setEdges(nextEdges);
         } else {
           persistIdeaSiblingOrder(closestNode.id, typedCurrentNodes, liveEdges);
         }
@@ -585,6 +652,22 @@ const FlowCanvasInner = () => {
       } else if (draggedType === 'idea') {
         const existingParentId = liveEdges.find((edge) => edge.target === node.id)?.source || null;
         persistIdeaSiblingOrder(existingParentId, typedCurrentNodes, liveEdges);
+        shouldAutoLayout = settings.autoLayoutOnInsert;
+      } else if (settings.autoLayoutOnInsert && shouldKeepFreeMove) {
+        const snappedPosition = resolveNodeCollision({
+          basePosition: snapPositionToGrid(node.position),
+          nodeType: draggedType,
+          nodes: typedCurrentNodes,
+          ignoreNodeId: node.id,
+          stepY: CANVAS_GRID_SIZE,
+        });
+        store.setNodes(
+          typedCurrentNodes.map((currentNode) =>
+            currentNode.id === node.id
+              ? ({ ...currentNode, position: snappedPosition } as MindFlowNode)
+              : currentNode,
+          ),
+        );
       }
 
       setDragState(null, null);
@@ -595,7 +678,7 @@ const FlowCanvasInner = () => {
         });
       }
     },
-    [dropTargetId, findDropTarget, persistIdeaSiblingOrder, setDragState],
+    [applyIdeaSiblingOrder, dropTargetId, findDropTarget, persistIdeaSiblingOrder, setDragState, settings.autoLayoutOnInsert],
   );
 
   const onNodeDragStart = useCallback(
@@ -625,6 +708,11 @@ const FlowCanvasInner = () => {
       const draggedSize = getNodeSize(draggedAsNode);
       const draggedCenterX = node.position.x + draggedSize.width / 2;
       const draggedCenterY = node.position.y + draggedSize.height / 2;
+
+      if (settings.autoLayoutOnInsert) {
+        setAlignmentGuides({ x: null, y: null });
+        return;
+      }
 
       let snapCenterX: number | null = null;
       let snapCenterY: number | null = null;
@@ -667,7 +755,7 @@ const FlowCanvasInner = () => {
         );
       }
     },
-    [findDropTarget, setDragState, edges, setNodes],
+    [findDropTarget, setDragState, setNodes, settings.autoLayoutOnInsert],
   );
 
   const totalPresentationSteps = presentationNodeIds.length;
@@ -809,9 +897,32 @@ const FlowCanvasInner = () => {
     if (!contextMenuNode) return;
     pushHistory();
     setSaveStatus('unsaved');
-    setEdges((currentEdges) => currentEdges.filter((edge) => edge.source !== contextMenuNode.id && edge.target !== contextMenuNode.id));
+    if (contextMenuNode.type === 'idea') {
+      const currentDepth = getNodeDepth(contextMenuNode.id, edges);
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.target !== contextMenuNode.id));
+      if (currentDepth > 0) {
+        setNodes((currentNodes) =>
+          currentNodes.map((currentNode) =>
+            currentNode.id === contextMenuNode.id
+              ? ({
+                  ...currentNode,
+                  data: {
+                    ...currentNode.data,
+                    color: getNextRootIdeaColor(
+                      currentNodes.filter((candidate) => candidate.id !== currentNode.id),
+                      edges.filter((edge) => edge.target !== currentNode.id),
+                    ),
+                  },
+                } as MindFlowNode)
+              : currentNode,
+          ),
+        );
+      }
+    } else {
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.source !== contextMenuNode.id && edge.target !== contextMenuNode.id));
+    }
     setNodeContextMenu(null);
-  }, [contextMenuNode, pushHistory, setEdges, setSaveStatus]);
+  }, [contextMenuNode, edges, pushHistory, setEdges, setNodes, setSaveStatus]);
 
   const handleDeleteNode = useCallback(() => {
     if (!contextMenuNode) return;
@@ -867,6 +978,17 @@ const FlowCanvasInner = () => {
     },
     [contextMenuNode, updateNodeData],
   );
+
+  const handleToggleIdeaFrame = useCallback(() => {
+    if (!contextMenuNode || contextMenuNode.type !== 'idea') return;
+    updateNodeData(
+      contextMenuNode.id,
+      {
+        descendantFrame: !Boolean(contextMenuNode.data.descendantFrame),
+      },
+      false,
+    );
+  }, [contextMenuNode, updateNodeData]);
 
   const handleDeleteEdge = useCallback(() => {
     if (!contextMenuEdge) return;
@@ -1180,12 +1302,21 @@ const FlowCanvasInner = () => {
                 </div>
               </div>
             )}
+            {contextMenuNode.type === 'idea' && contextMenuNodeDepth >= 2 && (
+              <button
+                onClick={handleToggleIdeaFrame}
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <SquareDashed size={14} />
+                {contextMenuNode.data.descendantFrame ? 'Remover moldura' : 'Adicionar moldura'}
+              </button>
+            )}
             <button
               onClick={handleDisconnectNode}
               className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Unlink2 size={14} />
-              Desconectar
+              Desconectar manualmente
             </button>
             <button
               onClick={handleDeleteNode}

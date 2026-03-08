@@ -1,9 +1,38 @@
 import { memo } from 'react';
-import { BaseEdge, EdgeProps, getBezierPath } from '@xyflow/react';
+import { BaseEdge, EdgeProps } from '@xyflow/react';
 import { useFlowStore } from '../../store/useFlowStore';
 import type { EdgeAnimationDirection, EdgeAnimationStyle } from '../../types';
 
 type AnimatedEdgeProps = EdgeProps & { className?: string };
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const buildMindflowCurvePath = ({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+}: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}) => {
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const absDx = Math.abs(dx);
+
+  if (absDx <= 1 && Math.abs(dy) <= 1) {
+    return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  }
+
+  const direction = dx >= 0 ? 1 : -1;
+  const lead = clamp(absDx * 0.42, 42, 132);
+  const sourceControlX = sourceX + lead * direction;
+  const targetControlX = targetX - lead * direction;
+
+  return `M ${sourceX} ${sourceY} C ${sourceControlX} ${sourceY}, ${targetControlX} ${targetY}, ${targetX} ${targetY}`;
+};
 
 export const AnimatedEdge = memo(({
   sourceX,
@@ -20,13 +49,11 @@ export const AnimatedEdge = memo(({
   selected,
 }: AnimatedEdgeProps) => {
   const { edgeAnimationsEnabled, edgeAnimationStyle: globalAnimationStyle } = useFlowStore((state) => state.settings);
-  const [edgePath] = getBezierPath({
+  const edgePath = buildMindflowCurvePath({
     sourceX,
     sourceY,
-    sourcePosition,
     targetX,
     targetY,
-    targetPosition,
   });
 
   const isFunnelConnection = sourceHandleId?.startsWith('stage-');

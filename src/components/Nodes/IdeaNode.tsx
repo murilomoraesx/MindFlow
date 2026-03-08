@@ -6,6 +6,13 @@ import { useFlowStore } from '../../store/useFlowStore';
 import { ChevronRight, ChevronLeft, MessageSquare } from 'lucide-react';
 import { getDefaultIdeaColorByDepth, IDEA_DESCENDANT_TEXT_COLOR } from '../../utils/nodeLayout';
 
+const IDEA_HANDLE_STYLE: React.CSSProperties = {
+  backgroundColor: 'rgba(148, 163, 184, 0.26)',
+  borderColor: 'rgba(255, 255, 255, 0.78)',
+  boxShadow: '0 4px 10px rgba(15, 23, 42, 0.12)',
+  backdropFilter: 'blur(8px)',
+};
+
 export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(String(data.label || ''));
@@ -52,6 +59,8 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
   const descendantTextColor = depth >= 2 && color === IDEA_DESCENDANT_TEXT_COLOR && theme === 'dark' ? '#f8fafc' : color;
   const label = String(data.label || '');
   const hasLabel = label.trim().length > 0;
+  const isCompactIdea = !!data.isEditing && !hasLabel && !data.descendantFrame;
+  const hasDescendantFrame = depth >= 2 && !!data.descendantFrame;
   const textBold = !!data.textBold;
   const textItalic = !!data.textItalic;
   const textUnderline = !!data.textUnderline;
@@ -169,19 +178,28 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
       borderLeftColor: color,
     };
   } else {
-    // Level 3+: Text only, transparent bg, no border
-    textStyles = "text-sm font-medium";
-    nodeStyles = "bg-transparent scale-[0.95]";
-    dynamicInlineStyles = {
-      color: descendantTextColor,
-      textShadow: `0 0 0 ${toAlpha(0.001)}`,
-    };
-
-    if (!hasLabel || isEditing) {
-      nodeStyles += " rounded-md border border-dashed border-slate-300 dark:border-slate-600 min-h-[44px]";
+    if (hasDescendantFrame) {
+      textStyles = "text-[15px] font-medium";
+      nodeStyles = "border border-slate-200 bg-white/90 shadow-none dark:border-slate-800 dark:bg-slate-900/88";
+      dynamicInlineStyles = {
+        color: descendantTextColor,
+        background: `linear-gradient(135deg, ${toAlpha(theme === 'dark' ? 0.12 : 0.08)} 0%, ${
+          theme === 'dark' ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.92)'
+        } 72%)`,
+        borderColor: toAlpha(theme === 'dark' ? 0.34 : 0.22),
+        borderLeftWidth: '3px',
+        borderLeftColor: color,
+      };
     } else {
-      nodeStyles += " rounded-md px-3 py-2";
-      dynamicInlineStyles.background = `linear-gradient(135deg, ${toAlpha(theme === 'dark' ? 0.18 : 0.1)}, transparent 65%)`;
+      // Level 3+: Text only, transparent bg, no border
+      textStyles = "text-[15px] font-medium";
+      nodeStyles = "bg-transparent scale-[0.95] rounded-none border-none shadow-none";
+      dynamicInlineStyles = {
+        color: descendantTextColor,
+        textShadow: `0 0 0 ${toAlpha(0.001)}`,
+        boxShadow: 'none',
+        background: 'transparent',
+      };
     }
   }
 
@@ -197,16 +215,34 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
   return (
     <div
       className={cn(
-        'group relative min-w-[120px] max-w-[280px] rounded-lg px-4 py-3',
+        depth >= 2
+          ? hasDescendantFrame
+            ? 'group relative min-w-[140px] max-w-[240px] rounded-lg px-3 py-2.5'
+            : 'group relative min-w-[72px] max-w-[360px] px-4 py-1.5'
+          : isCompactIdea
+            ? 'group relative min-w-[132px] max-w-[160px] rounded-lg px-3 py-2'
+            : 'group relative min-w-[120px] max-w-[280px] rounded-lg px-4 py-3',
         nodeStyles
       )}
       style={dynamicInlineStyles}
       onDoubleClick={handleDoubleClick}
     >
-      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
-      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 && "pointer-events-none opacity-0")}
+        style={IDEA_HANDLE_STYLE}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 ? "-left-3" : "-left-1.5")}
+        style={IDEA_HANDLE_STYLE}
+      />
 
-      <div className="flex w-full flex-col items-center justify-center text-center">
+      <div className={cn("flex w-full flex-col justify-center", depth >= 2 ? "items-start text-left" : "items-center text-center")}> 
         {data.badge && (
           <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white dark:bg-slate-200 dark:text-slate-900">
             {data.badge}
@@ -217,7 +253,16 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
           <input
             ref={inputRef}
             autoFocus
-            className={cn("w-full bg-transparent text-center outline-none", textStyles)}
+            className={cn(
+              depth >= 2
+                ? hasDescendantFrame
+                  ? "w-full border-b border-dashed border-slate-300 bg-transparent px-0 py-0.5 text-left outline-none dark:border-slate-600"
+                  : "min-w-[64px] border-b border-dashed border-slate-300 bg-transparent px-0 py-0.5 text-left outline-none dark:border-slate-600"
+                : isCompactIdea
+                  ? "w-full bg-transparent text-center outline-none"
+                : "w-full bg-transparent text-center outline-none",
+              textStyles,
+            )}
             value={draftLabel}
             onChange={(e) => setDraftLabel(e.target.value)}
             onBlur={commitEdit}
@@ -235,7 +280,7 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
           />
         ) : (
           <div
-            className={cn(textStyles, 'w-full break-words')}
+            className={cn(textStyles, depth >= 2 ? 'w-full break-words text-left' : 'w-full break-words')}
             style={{
               ...labelInlineStyles,
               ...(depth >= 2 ? { color: descendantTextColor } : {}),
@@ -298,8 +343,20 @@ export const IdeaNode = memo(({ id, data, selected }: NodeProps<MindFlowNode>) =
         </button>
       )}
 
-      <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
-      <Handle type="source" position={Position.Right} id="right" className="w-2 h-2 bg-slate-400 border-none rounded-full" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 && "pointer-events-none opacity-0")}
+        style={IDEA_HANDLE_STYLE}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className={cn("h-2.5 w-2.5 rounded-full border", depth >= 2 ? "-right-3" : "-right-1.5")}
+        style={IDEA_HANDLE_STYLE}
+      />
     </div>
   );
 });

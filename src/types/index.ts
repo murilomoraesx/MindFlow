@@ -2,7 +2,6 @@ import type { Node, Edge } from '@xyflow/react';
 
 export type NodeType = 'idea' | 'funnel' | 'group' | 'note' | 'image';
 export type JourneyStage = 'aquisicao' | 'ativacao' | 'conversao' | 'retencao';
-export type CanvasTheme = 'elegante' | 'moderno' | 'tech' | 'retro' | 'neon' | 'cosmos' | 'terminal' | 'ember';
 export type LayoutType = 'mindmap' | 'orgchart' | 'list';
 export type EdgeAnimationStyle = 'energy' | 'subtle' | 'tech';
 export type EdgeAnimationDirection = 'forward' | 'reverse';
@@ -71,6 +70,7 @@ export interface NodeData extends Record<string, unknown> {
   groupPadding?: number;
   groupWidth?: number;
   groupHeight?: number;
+  descendantFrame?: boolean;
   comments?: NodeComment[];
 }
 

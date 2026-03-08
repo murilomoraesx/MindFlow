@@ -16,7 +16,6 @@ import { CURRENT_SCHEMA_VERSION, DEFAULT_MAP_SETTINGS } from './utils/mapSchema'
 export default function App() {
   const {
     theme,
-    canvasTheme,
     currentView,
     showStylePanel,
     presentationMode,
@@ -89,12 +88,11 @@ export default function App() {
 
   return (
     <div
-      data-canvas-theme={canvasTheme}
       className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 selection:bg-slate-200 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-slate-800"
     >
       <ReactFlowProvider>
         {!presentationMode && <TopBar />}
-        <div className="flex flex-1 overflow-hidden relative">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <AnimatePresence initial={false}>
             {!presentationMode && !cleanMode && (
               <>
@@ -105,7 +103,7 @@ export default function App() {
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: -24, opacity: 0 }}
                     transition={{ duration: 0.22, ease: 'easeOut' }}
-                    className="h-full"
+                    className="flex h-full self-stretch"
                   >
                     <StructurePanel />
                   </motion.div>
@@ -116,7 +114,7 @@ export default function App() {
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: -20, opacity: 0 }}
                   transition={{ duration: 0.22, ease: 'easeOut' }}
-                  className="h-full"
+                  className="flex h-full self-stretch"
                 >
                   <NodePalette collapsed={sidebarCollapsed} />
                 </motion.div>
@@ -132,7 +130,7 @@ export default function App() {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: 24, opacity: 0 }}
                 transition={{ duration: 0.22, ease: 'easeOut' }}
-                className="h-full"
+                className="flex h-full self-stretch"
               >
                 <StylePanel />
               </motion.div>

@@ -3,10 +3,10 @@ import type { MapData, MapSettings, MindFlowEdge, MindFlowNode, NodeData, NodeTy
 import { calculateFunnelStages } from './funnel';
 import { IDEA_ROOT_COLOR } from './nodeLayout';
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
-  autoLayoutOnInsert: false,
+  autoLayoutOnInsert: true,
   presentationTheme: 'system',
   defaultView: 'map',
   edgeAnimationsEnabled: false,
@@ -145,12 +145,17 @@ const normalizeEdge = (rawEdge: unknown): MindFlowEdge | null => {
   };
 };
 
-const normalizeSettings = (settings: unknown): MapSettings => {
+const normalizeSettings = (settings: unknown, schemaVersion: number): MapSettings => {
   if (typeof settings !== 'object' || settings === null) return DEFAULT_MAP_SETTINGS;
   const candidate = settings as Partial<MapSettings>;
+  const shouldEnableAutoLayoutByMigration = schemaVersion < 3 && candidate.autoLayoutOnInsert === false;
 
   return {
-    autoLayoutOnInsert: typeof candidate.autoLayoutOnInsert === 'boolean' ? candidate.autoLayoutOnInsert : DEFAULT_MAP_SETTINGS.autoLayoutOnInsert,
+    autoLayoutOnInsert: shouldEnableAutoLayoutByMigration
+      ? true
+      : typeof candidate.autoLayoutOnInsert === 'boolean'
+        ? candidate.autoLayoutOnInsert
+        : DEFAULT_MAP_SETTINGS.autoLayoutOnInsert,
     presentationTheme:
       candidate.presentationTheme === 'light' || candidate.presentationTheme === 'dark' || candidate.presentationTheme === 'system'
         ? candidate.presentationTheme
@@ -170,6 +175,7 @@ const normalizeSettings = (settings: unknown): MapSettings => {
 
 export const normalizeMapData = (rawMap: unknown): MapData => {
   const candidate = typeof rawMap === 'object' && rawMap !== null ? (rawMap as Partial<MapData>) : {};
+  const sourceSchemaVersion = typeof candidate.schemaVersion === 'number' ? candidate.schemaVersion : 0;
 
   const rawNodes = Array.isArray(candidate.nodes) ? candidate.nodes : [];
   const nodes = rawNodes.map((node, index) => normalizeNode(node, index));
@@ -187,7 +193,7 @@ export const normalizeMapData = (rawMap: unknown): MapData => {
     edges,
     lastEdited: typeof candidate.lastEdited === 'number' ? candidate.lastEdited : Date.now(),
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    settings: normalizeSettings(candidate.settings),
+    settings: normalizeSettings(candidate.settings, sourceSchemaVersion),
     projectId: typeof candidate.projectId === 'string' && candidate.projectId.trim() ? candidate.projectId : undefined,
   };
 };

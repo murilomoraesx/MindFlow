@@ -1,5 +1,5 @@
 import { useFlowStore } from '../../store/useFlowStore';
-import { Undo2, Redo2, Download, Moon, Sun, Menu, Save, ChevronLeft, ChevronDown, ChevronUp, SlidersHorizontal, Palette, Map, PanelRight, LayoutTemplate, MonitorPlay, HelpCircle, PanelLeft, PanelLeftClose, MousePointer2, Command, Rows3, History, FileText, GitBranch, PanelsLeftRight, Sparkles, AlignStartVertical, AlignStartHorizontal, BetweenHorizontalStart, Focus, Search, Network, ListTree, Share2, RotateCcw, Play, Pause, Zap } from 'lucide-react';
+import { Undo2, Redo2, Download, Moon, Sun, Menu, Save, ChevronLeft, ChevronDown, ChevronUp, SlidersHorizontal, Palette, Map, PanelRight, LayoutTemplate, MonitorPlay, HelpCircle, PanelLeft, PanelLeftClose, MousePointer2, Command, Rows3, History, FileText, GitBranch, PanelsLeftRight, AlignStartVertical, AlignStartHorizontal, BetweenHorizontalStart, Focus, Search, Network, ListTree, Share2, RotateCcw, Play, Pause, Zap } from 'lucide-react';
 import type { EdgeAnimationStyle, LayoutType } from '../../types';
 import { exportFlowToPdf } from '../../utils/export';
 import { downloadTextFile, exportMapToMarkdown } from '../../utils/mapExchange';
@@ -7,20 +7,6 @@ import { SHARED_COLOR_PALETTE } from '../../utils/colors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CANVAS_POINTER_EVENT = 'mindflow:canvas-pointerdown';
-
-const LIGHT_THEMES = [
-  { id: 'moderno' as const, label: 'Moderno', desc: 'Limpo e profissional', tone: 'from-sky-100 via-blue-50 to-indigo-100' },
-  { id: 'elegante' as const, label: 'Elegante', desc: 'Sofisticado e refinado', tone: 'from-amber-100 via-rose-50 to-violet-100' },
-  { id: 'tech' as const, label: 'Tech', desc: 'Futurista com grid', tone: 'from-violet-200 via-indigo-100 to-cyan-100' },
-  { id: 'retro' as const, label: 'Retrô', desc: 'Vintage e aconchegante', tone: 'from-orange-100 via-amber-50 to-yellow-100' },
-];
-
-const DARK_THEMES = [
-  { id: 'neon' as const, label: 'Neon', desc: 'Elétrico e vibrante', tone: 'from-cyan-500 via-blue-600 to-fuchsia-500' },
-  { id: 'cosmos' as const, label: 'Cosmos', desc: 'Espaço profundo', tone: 'from-indigo-700 via-purple-800 to-slate-900' },
-  { id: 'terminal' as const, label: 'Terminal', desc: 'Hacker minimalista', tone: 'from-emerald-600 via-green-700 to-slate-900' },
-  { id: 'ember' as const, label: 'Ember', desc: 'Quente e envolvente', tone: 'from-orange-600 via-red-700 to-slate-900' },
-];
 
 export const TopBar = () => {
   const {
@@ -30,8 +16,6 @@ export const TopBar = () => {
     redo,
     theme,
     setTheme,
-    canvasTheme,
-    setCanvasTheme,
     setCurrentView,
     showMinimap,
     setShowMinimap,
@@ -65,11 +49,9 @@ export const TopBar = () => {
     pushHistory,
     setSaveStatus,
   } = useFlowStore();
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [showEdgeFlowMenu, setShowEdgeFlowMenu] = useState(false);
   const [showGlobalFlowColors, setShowGlobalFlowColors] = useState(false);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
   const layoutMenuRef = useRef<HTMLDivElement>(null);
   const edgeFlowMenuRef = useRef<HTMLDivElement>(null);
 
@@ -95,16 +77,6 @@ export const TopBar = () => {
     const firstThickness = String(firstEdge?.data?.thickness || '2');
     return edges.every((edge) => String(edge.data?.thickness || '2') === firstThickness) ? firstThickness : null;
   }, [edges]);
-
-  useEffect(() => {
-    if (!showThemeMenu) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (themeMenuRef.current?.contains(event.target as Node)) return;
-      setShowThemeMenu(false);
-    };
-    window.addEventListener('mousedown', handlePointerDown);
-    return () => window.removeEventListener('mousedown', handlePointerDown);
-  }, [showThemeMenu]);
 
   useEffect(() => {
     if (!showLayoutMenu) return;
@@ -352,7 +324,6 @@ export const TopBar = () => {
           <button
             onClick={() => {
               setShowLayoutMenu((prev: boolean) => !prev);
-              setShowThemeMenu(false);
               setShowEdgeFlowMenu(false);
             }}
             className={`flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors ${showLayoutMenu ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100'}`}
@@ -443,7 +414,6 @@ export const TopBar = () => {
           <button
             onClick={() => {
               setShowEdgeFlowMenu((current: boolean) => !current);
-              setShowThemeMenu(false);
               setShowLayoutMenu(false);
             }}
             className={`flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors ${
@@ -682,62 +652,8 @@ export const TopBar = () => {
           </>
         )}
 
-        <div className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-800" />
-        <div className="relative" ref={themeMenuRef}>
-          <button
-            onClick={() => {
-              setShowThemeMenu((current: boolean) => !current);
-              setShowLayoutMenu(false);
-              setShowEdgeFlowMenu(false);
-            }}
-            className={`flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors ${showThemeMenu ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100'}`}
-            title="Temas do canvas"
-          >
-            <Sparkles size={14} />
-            <span>Temas</span>
-          </button>
-          {showThemeMenu && (
-            <div className="mf-theme-menu absolute right-0 top-10 z-[100] w-[280px] overflow-hidden rounded-2xl border p-3 shadow-2xl backdrop-blur-xl">
-              <div className="px-1 pb-2 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                {theme === 'dark' ? 'Temas escuros' : 'Temas claros'}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {(theme === 'dark' ? DARK_THEMES : LIGHT_THEMES).map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setCanvasTheme(item.id);
-                      setShowThemeMenu(false);
-                    }}
-                    className={`group rounded-xl border p-2 text-left transition-colors ${
-                      canvasTheme === item.id
-                        ? 'border-violet-400 bg-violet-50 dark:border-violet-500/70 dark:bg-violet-500/10'
-                        : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className={`mb-2 h-10 rounded-lg bg-gradient-to-br ${item.tone} transition-transform group-hover:scale-[1.02]`} />
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">{item.label}</div>
-                    <div className="text-[10px] text-slate-400">{item.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
         <button
-          onClick={() => {
-            const next = theme === 'dark' ? 'light' : 'dark';
-            setTheme(next);
-            // Auto-switch to matching theme set
-            const lightIds = LIGHT_THEMES.map((t) => t.id) as string[];
-            const darkIds = DARK_THEMES.map((t) => t.id) as string[];
-            if (next === 'dark' && lightIds.includes(canvasTheme)) {
-              setCanvasTheme(DARK_THEMES[0].id);
-            } else if (next === 'light' && darkIds.includes(canvasTheme)) {
-              setCanvasTheme(LIGHT_THEMES[0].id);
-            }
-          }}
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           className="flex h-7 w-7 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
         >
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
